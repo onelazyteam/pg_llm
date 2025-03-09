@@ -1,0 +1,21 @@
+#!/bin/bash
+
+commit_msg_file=$1
+commit_msg=$(cat "$commit_msg_file")
+
+# Define commit message format pattern
+pattern='^[[]+(feature|bug|doc|task)[]] #[0-9]+ .+'
+
+if ! [[ $commit_msg =~ $pattern ]]; then
+    echo "Error: Invalid commit message format"
+    echo "Correct format should be: [type] #number message"
+    echo "where type can be: feature, bug, task or doc"
+    echo "Examples:"
+    echo "  [feature] #123 Add new feature"
+    echo "  [bug] #456 Fix an issue"
+    echo "  [task] #789 Complete a task"
+    echo "  [doc] #1000 Update documentation"
+    exit 1
+fi
+
+exit 0 

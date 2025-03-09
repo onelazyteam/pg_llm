@@ -1,2 +1,278 @@
-# pg-llm
-Postgres plug-in for accessing large models
+# pg_llm - PostgreSQL LLM Integration Extension
+
+This PostgreSQL extension enables direct integration with various Large Language Models (LLMs). It supports multiple LLM providers and features like session management, parallel inference, and more.
+
+## Project Structure
+
+```
+pg_llm/
+├── include/                 # Public header files
+│   └── pg_llm/
+│       └── models/        # Model interface headers
+├── src/                    # Source files
+│   └── models/           # Model implementations
+│       ├── chatgpt/     # ChatGPT model
+│       ├── deepseek/    # DeepSeek model
+│       ├── hunyuan/     # Tencent Hunyuan model
+│       └── qianwen/     # Alibaba Qianwen model
+├── test/                  # Test files
+│   ├── sql/             # SQL test files
+│   └── expected/        # Expected test outputs
+├── docs/                  # Documentation
+├── .githooks/            # Git hooks for development
+├── CMakeLists.txt        # CMake build configuration
+├── pg_llm.control       # Extension control file
+└── README.md            # This file
+```
+
+## Features
+
+- [ ] Support for multiple LLM providers:
+  - [ ] OpenAI ChatGPT
+  - [ ] DeepSeek
+  - [ ] Tencent Hunyuan
+  - [ ] Alibaba Tongyi Qianwen
+  - [ ] DouYin DouBao
+  - [ ] BaiDu WenXin
+- [ ] Dynamic model management (add/remove models at runtime)
+- [ ] Large model metadata persistence
+- [ ] Importing the log library
+- [ ] Support for streaming responses
+- [ ] Session-based multi-turn conversation support
+- [ ] Parallel inference with multiple models
+- [ ] Support local LLM
+- [ ] Automatically select the model with the highest confidence (select by score), and use the local model as a backup (fall back to the local model when confidence is low)
+- [ ] Sensitive information encryption
+- [ ] Audit logging
+- [ ] Session state management
+- [ ] Execute SQL through plug-in functions and let the LLM give optimization suggestions
+- [ ] Support natural language query, can enter human language through plug-ins to query database data
+- [ ] Generate reports, generate data analysis charts, intelligent analysis: built-in data statistical analysis and visualization suggestion generation
+- [ ] Full observability, complete record of decision-making process and intermediate results
+- [ ] Improve model accuracy, RAG knowledge base, feedback learning
+
+## Prerequisites
+
+- PostgreSQL 14.0 or later
+- C++20 compatible compiler
+- libcurl
+- OpenSSL
+- jsoncpp
+- CMake 3.15 or later (for CMake build)
+
+## Installation
+
+1. Configure PostgreSQL environment:
+
+```bash
+# Add PostgreSQL binaries to your PATH
+# First, locate your PostgreSQL installation's bin directory:
+# You can use the command:
+which psql
+# or
+pg_config --bindir
+
+# Then add the path to your shell configuration file
+# For macOS (add to ~/.zshrc or ~/.bash_profile):
+export PATH=/path/to/postgresql/bin:$PATH
+
+# For Linux (add to ~/.bashrc):
+export PATH=/path/to/postgresql/bin:$PATH
+
+# Apply changes
+source ~/.zshrc  # or ~/.bash_profile or ~/.bashrc
+```
+
+2. Install dependencies:
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install postgresql-server-dev-all libcurl4-openssl-dev libjsoncpp-dev libssl-dev cmake pkg-config
+
+# MacOS
+brew install postgresql curl jsoncpp openssl cmake pkg-config
+```
+
+3. Build and install the extension:
+
+```bash
+cd pg_llm
+mkdir build && cd build
+
+# Configure (choose one of the following build types)
+# Debug build
+cmake -DCMAKE_BUILD_TYPE=Debug ..
+# Release build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+# Address Sanitizer build
+cmake -DCMAKE_BUILD_TYPE=ASan ..
+
+# Build
+make
+
+# Install
+sudo make install
+```
+
+4. Enable the extension in PostgreSQL:
+
+```sql
+CREATE EXTENSION pg_llm;
+```
+
+## Usage
+
+### Adding Models
+
+1. ChatGPT:
+```sql
+SELECT pg_llm_add_model(
+    'chatgpt',                         -- model type
+    'gpt4',                           -- instance name
+    'your-api-key',                   -- API key
+    '{
+        "model_name": "gpt-4",
+        "api_endpoint": "https://api.openai.com/v1/chat/completions"
+    }'
+);
+```
+
+2. DeepSeek:
+```sql
+SELECT pg_llm_add_model(
+    'deepseek',
+    'deepseek-chat',
+    'your-api-key',
+    '{
+        "model_name": "deepseek-chat",
+        "api_endpoint": "https://api.deepseek.com/v1/chat/completions"
+    }'
+);
+```
+
+3. Tencent Hunyuan:
+```sql
+SELECT pg_llm_add_model(
+    'hunyuan',
+    'hunyuan-chat',
+    'your-api-key',
+    '{
+        "model_name": "hunyuan",
+        "api_endpoint": "https://hunyuan.cloud.tencent.com/hyllm/v1/chat/completions",
+        "secret_key": "your-secret-key"
+    }'
+);
+```
+
+4. Alibaba Tongyi Qianwen:
+```sql
+SELECT pg_llm_add_model(
+    'qianwen',
+    'qianwen-chat',
+    'your-api-key',
+    '{
+        "model_name": "qwen-turbo",
+        "api_endpoint": "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
+        "access_key_id": "your-access-key-id",
+        "access_key_secret": "your-access-key-secret"
+    }'
+);
+```
+
+### Session Management
+
+1. Create a new session:
+```sql
+-- Create a session and get the session ID
+SELECT pg_llm_create_session('gpt4') AS session_id;
+
+-- Create a session with a custom session ID
+SELECT pg_llm_create_session('gpt4', 'my-custom-session-id');
+```
+
+2. Chat within a session:
+```sql
+-- Send a message and get a response
+SELECT pg_llm_chat_session('session-123', 'What is a database?');
+
+-- Send follow-up questions (maintains context)
+SELECT pg_llm_chat_session('session-123', 'What are its types?');
+SELECT pg_llm_chat_session('session-123', 'Tell me more about relational databases.');
+```
+
+3. View session history:
+```sql
+-- Get all messages in the session
+SELECT * FROM pg_llm_get_session_history('session-123');
+```
+
+4. Manage sessions:
+```sql
+-- List all active sessions
+SELECT * FROM pg_llm_list_sessions();
+
+-- Delete a specific session
+SELECT pg_llm_delete_session('session-123');
+```
+
+### Single-turn Chat
+
+```sql
+SELECT pg_llm_chat('gpt4', 'What is PostgreSQL?');
+```
+
+### Parallel Multi-model Chat
+
+```sql
+SELECT pg_llm_parallel_chat(
+    'What are the advantages of PostgreSQL?',
+    ARRAY['gpt4', 'deepseek-chat', 'hunyuan-chat', 'qianwen-chat']
+);
+```
+
+### Removing Models
+
+```sql
+SELECT pg_llm_remove_model('gpt4');
+```
+
+## Development Guide
+
+Please refer to [CONTRIBUTING.md](CONTRIBUTING.md) for detailed development guidelines, including:
+- Code organization
+- Building for development
+- Development workflow
+- Adding new models
+- Coding standards
+- Commit conventions
+
+## Security Considerations
+
+- API keys are encrypted before storage
+- All sensitive information is handled securely
+- Access control is managed through PostgreSQL's permission system
+- Comprehensive audit logging
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+### Coding Standards
+
+- Use C++20 features appropriately
+- Follow PostgreSQL coding conventions
+- Add comprehensive comments
+- Include unit tests for new features
+- Update documentation as needed
+
+## License
+
+This project is licensed under the PostgreSQL License - see the LICENSE file for details.
+
+## Support
+
+For issues and feature requests, please create an issue in the GitHub repository. 
