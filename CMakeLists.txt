@@ -26,6 +26,24 @@ elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
 endif()
 
+# Build glog dependency
+message(STATUS "Setting up glog...")
+execute_process(
+    COMMAND ${CMAKE_SOURCE_DIR}/thirdparty/build_glog.sh
+    RESULT_VARIABLE GLOG_BUILD_RESULT
+    OUTPUT_VARIABLE GLOG_BUILD_OUTPUT
+    ERROR_VARIABLE GLOG_BUILD_ERROR
+)
+
+if (NOT ${GLOG_BUILD_RESULT} EQUAL 0)
+    message(FATAL_ERROR "Failed to build glog: ${GLOG_BUILD_ERROR}")
+endif()
+
+# Set glog paths
+set(GLOG_INSTALL_DIR "${CMAKE_SOURCE_DIR}/thirdparty/install")
+set(GLOG_INCLUDE_DIR "${GLOG_INSTALL_DIR}/include")
+set(GLOG_LIBRARY_DIR "${GLOG_INSTALL_DIR}/lib")
+
 # OS detection
 if(APPLE)
     # macOS specific settings
@@ -96,17 +114,23 @@ execute_process(
     OUTPUT_VARIABLE PG_BINDIR
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
-
-message(STATUS "PostgreSQL include dir: ${PG_INCLUDEDIR}")
-message(STATUS "PostgreSQL server include dir: ${PG_INCLUDEDIR_SERVER}")
-message(STATUS "PostgreSQL lib dir: ${PG_LIBDIR}")
-message(STATUS "PostgreSQL bin dir: ${PG_BINDIR}")
-
 execute_process(
     COMMAND ${PG_CONFIG} --pkglibdir
     OUTPUT_VARIABLE PG_PKGLIBDIR
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
+execute_process(
+    COMMAND ${PG_CONFIG} --sharedir
+    OUTPUT_VARIABLE PG_SHAREDIR
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+message(STATUS "PostgreSQL include dir: ${PG_INCLUDEDIR}")
+message(STATUS "PostgreSQL server include dir: ${PG_INCLUDEDIR_SERVER}")
+message(STATUS "PostgreSQL lib dir: ${PG_LIBDIR}")
+message(STATUS "PostgreSQL bin dir: ${PG_BINDIR}")
+message(STATUS "PostgreSQL pkglib dir: ${PG_PKGLIBDIR}")
+message(STATUS "PostgreSQL share dir: ${PG_SHAREDIR}")
 
 # Set PostgreSQL library variable
 set(PG_LIBDIR ${PG_LIBDIR} CACHE PATH "PostgreSQL library directory")
@@ -138,10 +162,14 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include
     ${PG_INCLUDEDIR}
     ${PG_INCLUDEDIR_SERVER}
+    ${GLOG_INCLUDE_DIR}
 )
 
 # Add link directories
-link_directories(${PG_LIBDIR})
+link_directories(
+    ${PG_LIBDIR}
+    ${GLOG_LIBRARY_DIR}
+)
 
 # Add subdirectories
 add_subdirectory(src)
@@ -149,16 +177,16 @@ add_subdirectory(src)
 # Install targets
 install(
     TARGETS pg_llm
-    LIBRARY DESTINATION ${PG_PKGLIBDIR}
+    LIBRARY DESTINATION "${PG_PKGLIBDIR}"
 )
 
 install(
     FILES pg_llm.control
-    DESTINATION ${PG_PKGLIBDIR}/extension
+    DESTINATION "${PG_SHAREDIR}/extension"
 )
 
 install(
     DIRECTORY sql/
-    DESTINATION ${PG_PKGLIBDIR}/extension
+    DESTINATION "${PG_SHAREDIR}/extension"
     FILES_MATCHING PATTERN "*.sql"
 ) 

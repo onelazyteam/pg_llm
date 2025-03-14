@@ -10,8 +10,11 @@ extern "C" {
 #include "utils/timestamp.h"
 #include "executor/spi.h"
 
+#ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
+#endif
 
+/* Declare PostgreSQL extension functions */
 PG_FUNCTION_INFO_V1(pg_llm_add_model);
 PG_FUNCTION_INFO_V1(pg_llm_remove_model);
 PG_FUNCTION_INFO_V1(pg_llm_chat);
@@ -25,7 +28,14 @@ Datum pg_llm_chat(PG_FUNCTION_ARGS);
 Datum pg_llm_parallel_chat(PG_FUNCTION_ARGS);
 Datum pg_llm_create_session(PG_FUNCTION_ARGS);
 Datum pg_llm_chat_session(PG_FUNCTION_ARGS);
+
+/* Extension initialization and finalization functions */
+void _PG_init(void);
+void _PG_fini(void);
 }  // extern "C"
+
+// Include our wrapper header
+#include "utils/pg_llm_glog.h"
 
 #include "models/chatgpt_model.h"
 #include "models/chat_session.h"
@@ -34,6 +44,37 @@ Datum pg_llm_chat_session(PG_FUNCTION_ARGS);
 #include "models/llm_interface.h"
 #include "models/model_manager.h"
 #include "models/qianwen_model.h"
+
+/*
+ * _PG_init
+ *
+ * Extension initialization function.
+ * This function is called when the extension is loaded.
+ */
+void _PG_init(void)
+{
+    /* Initialize GUC parameters for glog */
+    pg_llm_glog_init_guc();
+    
+    /* Initialize glog */
+    pg_llm_glog_init();
+    
+    PG_LLM_LOG_INFO("pg_llm extension loaded");
+}
+
+/*
+ * _PG_fini
+ *
+ * Extension finalization function.
+ * This function is called when the extension is unloaded.
+ */
+void _PG_fini(void)
+{
+    PG_LLM_LOG_INFO("pg_llm extension unloaded");
+    
+    /* Shutdown glog */
+    pg_llm_glog_shutdown();
+}
 
 // Helper function to generate UUID
 static std::string generate_uuid() {

@@ -7,14 +7,17 @@ This document provides comprehensive instructions for developing and contributin
 ```
 pg_llm/
 ├── include/                 # Public header files
-│   └── pg_llm/
-│       └── models/        # Model interface headers
+│   ├── models/            # Model interface headers
+│   └── utils/             # Utility header files
+│       └── pg_llm_glog.h  # glog integration header
 ├── src/                    # Source files
-│   └── models/           # Model implementations
-│       ├── chatgpt/     # ChatGPT model
-│       ├── deepseek/    # DeepSeek model
-│       ├── hunyuan/     # Tencent Hunyuan model
-│       └── qianwen/     # Alibaba Qianwen model
+│   ├── models/           # Model implementations
+│   │   ├── chatgpt/     # ChatGPT model
+│   │   ├── deepseek/    # DeepSeek model
+│   │   ├── hunyuan/     # Tencent Hunyuan model
+│   │   └── qianwen/     # Alibaba Qianwen model
+│   └── utils/           # Utility implementations
+│       └── pg_llm_glog.cpp  # glog integration implementation
 ├── test/                  # Test files
 │   ├── sql/             # SQL test files
 │   └── expected/        # Expected test outputs
@@ -61,7 +64,52 @@ sudo yum install postgresql-devel libcurl-devel jsoncpp-devel openssl-devel cmak
 
 ## Building for Development
 
-### Create Build Directory
+### Building glog Dependency
+
+The pg_llm extension uses Google's logging library (glog) for structured logging. Before building pg_llm, the glog library needs to be compiled.
+
+#### Automatic glog Build (Default)
+
+By default, glog is automatically downloaded and built when you compile pg_llm with CMake. The build system will:
+1. Run the `thirdparty/build_glog.sh` script
+2. Download glog v0.7.0 from GitHub
+3. Configure and build glog with appropriate options
+4. Install the glog library to `thirdparty/install/`
+
+#### Manual glog Build (Optional)
+
+If you need to build glog manually (for debugging or customization):
+
+```bash
+cd thirdparty
+./build_glog.sh
+```
+
+This will create the following directories:
+- `thirdparty/glog/`: Contains the glog source code
+- `thirdparty/glog/build/`: Contains the build files
+- `thirdparty/install/`: Contains the installed headers and libraries
+
+#### Verifying glog Build
+
+To verify that glog was built correctly:
+
+```bash
+# Check for the indicator file
+ls -la thirdparty/install/.glog_build_complete
+
+# Check for the library file
+ls -la thirdparty/install/lib/libglog.a
+
+# Check for header files
+ls -la thirdparty/install/include/glog/
+```
+
+### Building pg_llm
+
+After the glog dependency is prepared, you can build pg_llm as follows:
+
+#### Create Build Directory
 
 ```bash
 cd pg_llm
@@ -69,7 +117,7 @@ mkdir build
 cd build
 ```
 
-### Configure Project
+#### Configure Project
 
 CMake supports multiple build types:
 
@@ -97,7 +145,7 @@ cmake -DCMAKE_BUILD_TYPE=ASan ..
 
 Uses AddressSanitizer for memory issue detection, suitable for finding memory leaks and out-of-bounds access problems.
 
-### Compile
+#### Compile
 
 ```bash
 make
@@ -111,25 +159,33 @@ make -j$(nproc)  # Linux
 make -j$(sysctl -n hw.ncpu)  # MacOS
 ```
 
-### Run Tests
+The build system will:
+1. Download and build glog if needed (if not already built manually)
+2. Include glog header directories in compilation flags
+3. Link against the glog library
+4. Set up everything required for pg_llm to use glog
+
+#### Run Tests
 
 ```bash
 make test
 ```
 
-### Install
+#### Install
 
 ```bash
 sudo make install
 ```
 
-### Enabling the Extension in PostgreSQL
+#### Enabling the Extension in PostgreSQL
 
 After installation, connect to your PostgreSQL database and execute:
 
 ```sql
 CREATE EXTENSION pg_llm;
 ```
+
+This will initialize glog as part of the extension loading process.
 
 ## Development Environment Setup
 
@@ -317,4 +373,36 @@ cmake -DCMAKE_BUILD_TYPE=Debug \
 - Each commit should represent a single, complete feature or fix
 - Commit messages should clearly describe the changes and their purpose
 - Follow the coding standards and development workflow
-- Keep documentation up to date 
+- Keep documentation up to date
+
+## Logging
+
+pg_llm uses Google Logging (glog) for logging. Please follow these best practices:
+
+1. **Correctly include header files**: Always use our wrapper header file, do not include glog headers directly:
+   ```cpp
+   #include "utils/pg_llm_glog.h"  // Correct
+   // #include <glog/logging.h>  // Wrong!
+   ```
+
+2. **Use safe logging macros**: Use our wrapper macros for logging:
+   ```cpp
+   PG_LLM_LOG_INFO << "This is an info log";
+   PG_LLM_LOG_WARNING << "This is a warning log";
+   PG_LLM_LOG_ERROR << "This is an error log";
+   PG_LLM_LOG_FATAL << "This is a fatal log";
+   PG_LLM_VLOG(1) << "This is a verbose log";
+   ```
+
+3. **Do not use original LOG macros**: Do not use glog's LOG macros directly, as they will conflict with PostgreSQL macros:
+   ```cpp
+   // LOG(INFO) << "this is wrong";  // Wrong!
+   ```
+
+4. **Use correct namespace when accessing FLAGS variables**:
+   ```cpp
+   google::FLAGS_logtostderr = true;  // Correct
+   // FLAGS_logtostderr = true;  // Wrong!
+   ```
+
+For detailed logging system usage instructions, please refer to the [glog integration documentation](../docs/glog_integration.md). 

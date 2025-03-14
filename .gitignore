@@ -28,3 +28,7 @@
 
 compile_commands.json
 **/build/*
+**/thirdparty/glog/
+**/thirdparty/glog/**
+**/thirdparty/install/
+**/thirdparty/install/**

@@ -2,29 +2,6 @@
 
 This PostgreSQL extension enables direct integration with various Large Language Models (LLMs). It supports multiple LLM providers and features like session management, parallel inference, and more.
 
-## Project Structure
-
-```
-pg_llm/
-├── include/                 # Public header files
-│   └── pg_llm/
-│       └── models/        # Model interface headers
-├── src/                    # Source files
-│   └── models/           # Model implementations
-│       ├── chatgpt/     # ChatGPT model
-│       ├── deepseek/    # DeepSeek model
-│       ├── hunyuan/     # Tencent Hunyuan model
-│       └── qianwen/     # Alibaba Qianwen model
-├── test/                  # Test files
-│   ├── sql/             # SQL test files
-│   └── expected/        # Expected test outputs
-├── docs/                  # Documentation
-├── .githooks/            # Git hooks for development
-├── CMakeLists.txt        # CMake build configuration
-├── pg_llm.control       # Extension control file
-└── README.md            # This file
-```
-
 ## Features
 
 - [ ] Support for multiple LLM providers:
@@ -59,6 +36,33 @@ pg_llm/
 - OpenSSL
 - jsoncpp
 - CMake 3.15 or later (for CMake build)
+
+## Dependencies
+
+The pg_llm extension depends on the following libraries:
+
+- **OpenSSL**: For secure connections to LLM APIs
+- **cURL**: For making HTTP requests to LLM APIs
+- **JsonCpp**: For parsing JSON responses from LLM APIs
+- **Google Logging Library (glog)**: For structured logging (automatically downloaded and built)
+
+The build system will automatically check for these dependencies and provide instructions if they are missing.
+
+### Logging with glog
+
+pg_llm uses Google's logging library (glog) for structured logging. The library is automatically downloaded and built during the compilation process. You can configure logging behavior using PostgreSQL configuration parameters:
+
+```sql
+-- Set glog configuration
+ALTER SYSTEM SET pg_llm.glog_log_dir = '/path/to/logs';
+ALTER SYSTEM SET pg_llm.glog_min_log_level = 'WARNING';
+ALTER SYSTEM SET pg_llm.glog_max_log_size = 100;
+
+-- Reload configuration
+SELECT pg_reload_conf();
+```
+
+See [thirdparty/README.md](thirdparty/README.md) for more details on glog integration and configuration.
 
 ## Installation
 
@@ -114,7 +118,29 @@ make
 sudo make install
 ```
 
-4. Enable the extension in PostgreSQL:
+4. Configure PostgreSQL to load the extension:
+
+Since pg_llm implements the `_PG_init` function for initialization, it must be loaded via `shared_preload_libraries`. Add the following to your `postgresql.conf` file:
+
+```
+# Add pg_llm to shared_preload_libraries
+shared_preload_libraries = 'pg_llm'
+```
+
+5. Restart PostgreSQL to load the extension:
+
+```bash
+# For systemd-based systems
+sudo systemctl restart postgresql
+
+# For macOS
+brew services restart postgresql
+
+# For other systems
+pg_ctl restart -D /path/to/data/directory
+```
+
+6. Create the extension in your database:
 
 ```sql
 CREATE EXTENSION pg_llm;

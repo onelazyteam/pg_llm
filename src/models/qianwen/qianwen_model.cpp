@@ -97,7 +97,7 @@ ModelResponse QianwenModel::chat_completion(const std::vector<ChatMessage>& mess
                         first_choice["message"].isMember("content") &&
                         first_choice["message"]["content"].isString()) {
                         response_data.fullReply = first_choice["message"]["content"].asString();
-                        std::cout << "Complete reply:\n" << response_data.fullReply << std::endl;
+                        PG_LLM_LOG_INFO("Complete reply: %s", response_data.fullReply.c_str());
                         // Only return the content field, not the entire JSON response
                         return ModelResponse{response_data.fullReply, 0.9, get_model_name()};
                     }

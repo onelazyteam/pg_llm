@@ -22,6 +22,8 @@
 #include <openssl/sha.h>
 #include <openssl/types.h>
 
+#include "utils/pg_llm_glog.h"
+
 namespace pg_llm {
 
 // Structure to hold chat message
