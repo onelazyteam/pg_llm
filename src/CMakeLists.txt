@@ -26,6 +26,10 @@ set_target_properties(pg_llm PROPERTIES
 # Set platform specific properties
 if(APPLE)
     set_target_properties(pg_llm PROPERTIES SUFFIX ".dylib")
+    # macOS specific link options
+    target_link_options(pg_llm PRIVATE
+        -bundle_loader "${PG_BINDIR}/postgres"
+    )
 else()
     set_target_properties(pg_llm PROPERTIES SUFFIX ".so")
 endif()
@@ -48,13 +52,6 @@ target_link_libraries(pg_llm PRIVATE
     -L${PG_LIBDIR} -lpq -lpgcommon -lpgport
     glog::glog
 )
-
-# PostgreSQL link options - for macOS
-if(APPLE)
-    target_link_options(pg_llm PRIVATE
-        -bundle_loader "${PG_BINDIR}/postgres"
-    )
-endif()
 
 # Add debug information
 message(STATUS "Source files: ${SOURCES}")

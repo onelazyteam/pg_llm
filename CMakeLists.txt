@@ -44,9 +44,8 @@ set(GLOG_INSTALL_DIR "${CMAKE_SOURCE_DIR}/thirdparty/install")
 set(GLOG_INCLUDE_DIR "${GLOG_INSTALL_DIR}/include")
 set(GLOG_LIBRARY_DIR "${GLOG_INSTALL_DIR}/lib")
 
-# OS detection
+# OS detection and platform-specific settings
 if(APPLE)
-    # macOS specific settings
     message(STATUS "Configuring for macOS")
     execute_process(
         COMMAND brew --prefix
@@ -90,6 +89,18 @@ if(APPLE)
     # Set pkg-config path
     set(ENV{PKG_CONFIG_PATH} "${OPENSSL_ROOT_DIR}/lib/pkgconfig:${CURL_ROOT_DIR}/lib/pkgconfig:${JSONCPP_ROOT_DIR}/lib/pkgconfig:${POSTGRESQL_ROOT_DIR}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
     message(STATUS "PKG_CONFIG_PATH: $ENV{PKG_CONFIG_PATH}")
+else()
+    message(STATUS "Configuring for Linux")
+    # Linux specific settings
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(OPENSSL REQUIRED openssl)
+    pkg_check_modules(CURL REQUIRED libcurl)
+    pkg_check_modules(JSONCPP REQUIRED jsoncpp)
+    
+    # Set include and library paths
+    set(OPENSSL_ROOT_DIR ${OPENSSL_PREFIX})
+    set(CURL_ROOT_DIR ${CURL_PREFIX})
+    set(JSONCPP_ROOT_DIR ${JSONCPP_PREFIX})
 endif()
 
 # PostgreSQL related configuration
@@ -150,7 +161,7 @@ if(APPLE AND JSONCPP_ROOT_DIR)
     endif()
     message(STATUS "Found jsoncpp library: ${JSONCPP_LIBRARIES}")
 else()
-    # For other platforms, use pkg-config
+    # For Linux, use pkg-config
     pkg_check_modules(JSONCPP REQUIRED jsoncpp)
 endif()
 
