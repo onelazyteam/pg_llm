@@ -8,7 +8,7 @@ The `build_glog.sh` script in this directory automates the process of downloadin
 
 ### Features
 
-- Automatically downloads glog from GitHub (version v0.7.0)
+- Automatically downloads glog from GitHub (version v0.6.0)
 - Configures and builds glog with appropriate options for PostgreSQL integration
 - Installs glog to the local `install/` directory
 - Provides structured logging across the extension
@@ -90,16 +90,3 @@ LOG_IF(INFO, condition) << "This is logged only if condition is true";
 // Verbose logging (controlled by pg_llm.glog_v parameter)
 VLOG(1) << "This is a verbose message at level 1";
 ```
-
-### Troubleshooting
-
-If you encounter issues with glog:
-
-1. Verify that the glog library was built successfully by checking for the file `.glog_build_complete` in the `thirdparty/install/` directory
-2. Ensure the PostgreSQL server has write permissions to the log directory specified in `pg_llm.glog_log_dir`
-3. Check PostgreSQL's error log for any messages about glog initialization
-4. Increase the verbosity with `SET pg_llm.glog_v = 3;` for more detailed logs
-
-### Advanced Configuration
-
-Additional glog features can be accessed by modifying the source code in `src/utils/pg_llm_glog.cpp`. The current implementation exposes the most commonly used options, but glog provides many more configuration options 

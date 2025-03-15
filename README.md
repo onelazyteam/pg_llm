@@ -97,17 +97,40 @@ sudo apt-get install postgresql-server-dev-all libcurl4-openssl-dev libjsoncpp-d
 brew install postgresql curl jsoncpp openssl cmake pkg-config
 ```
 
-3. Build and install the extension:
+3. Build and install glog:
+
+```bash
+cd pg_llm/thirdparty
+
+# Build glog
+./build_glog.sh
+
+# Verify glog installation
+ls -la install/lib/libglog.a        # Static library
+ls -la install/include/glog/        # Header files
+cat install/.glog_build_complete    # Build completion marker
+```
+
+The script will:
+- Download glog v0.6.0 from GitHub
+- Configure and build with appropriate options
+- Install to `thirdparty/install/` directory
+- Create static library and headers
+- Set up proper linking flags
+
+4. Build and install pg_llm:
 
 ```bash
 cd pg_llm
 mkdir build && cd build
 
 # Configure (choose one of the following build types)
-# Debug build
+# Debug build with glog debug output enabled
 cmake -DCMAKE_BUILD_TYPE=Debug ..
-# Release build
+
+# Release build with optimized glog settings
 cmake -DCMAKE_BUILD_TYPE=Release ..
+
 # Address Sanitizer build
 cmake -DCMAKE_BUILD_TYPE=ASan ..
 
@@ -118,7 +141,7 @@ make
 sudo make install
 ```
 
-4. Configure PostgreSQL to load the extension:
+5. Configure PostgreSQL to load the extension:
 
 Since pg_llm implements the `_PG_init` function for initialization, it must be loaded via `shared_preload_libraries`. Add the following to your `postgresql.conf` file:
 
@@ -127,7 +150,7 @@ Since pg_llm implements the `_PG_init` function for initialization, it must be l
 shared_preload_libraries = 'pg_llm'
 ```
 
-5. Restart PostgreSQL to load the extension:
+6. Restart PostgreSQL to load the extension:
 
 ```bash
 # For systemd-based systems
@@ -140,7 +163,7 @@ brew services restart postgresql
 pg_ctl restart -D /path/to/data/directory
 ```
 
-6. Create the extension in your database:
+7. Create the extension in your database:
 
 ```sql
 CREATE EXTENSION pg_llm;

@@ -21,11 +21,16 @@ pg_llm/
 ├── test/                  # Test files
 │   ├── sql/             # SQL test files
 │   └── expected/        # Expected test outputs
-├── docs/                  # Documentation
-├── .githooks/            # Git hooks for development
-├── CMakeLists.txt        # CMake build configuration
-├── pg_llm.control       # Extension control file
-└── README.md            # Project overview
+├── thirdparty/           # Third-party dependencies
+│   ├── build_glog.sh    # Script to build glog
+│   ├── glog/            # glog source code (after build)
+│   └── install/         # Installed libraries and headers
+├── docs/                 # Documentation
+├── .githooks/           # Git hooks for development
+├── CMakeLists.txt       # Main CMake build configuration
+├── src/CMakeLists.txt   # Source directory build configuration
+├── pg_llm.control      # PostgreSQL extension control file
+└── README.md           # Project overview
 ```
 
 ## Dependencies
@@ -304,43 +309,6 @@ cmake -DCMAKE_BUILD_TYPE=Debug \
       ..
 ```
 
-### Compilation Errors
-
-If you encounter compilation errors related to C++ version, ensure your compiler supports C++20. You can check the GCC version with:
-
-```bash
-g++ --version
-```
-
-### PostgreSQL Function Undefined Errors
-
-If you encounter errors like:
-
-```
-Undefined symbols for architecture x86_64:
-  "_ExceptionalCondition", referenced from:...
-  "_SPI_connect", referenced from:...
-  "_SPI_exec", referenced from:...
-```
-
-On macOS, you typically need these additional settings:
-
-```bash
-# Check if PostgreSQL binary exists
-pg_config --bindir
-ls $(pg_config --bindir)/postgres
-
-# Add special linking options when configuring with CMake
-cmake .. -DCMAKE_SHARED_LINKER_FLAGS="-bundle_loader $(pg_config --bindir)/postgres"
-```
-
-For Linux systems, ensure you link to PostgreSQL libraries:
-
-```bash
-# Add PostgreSQL libraries when linking
-cmake .. -DCMAKE_SHARED_LINKER_FLAGS="-L$(pg_config --libdir) -lpq -lpgcommon -lpgport"
-```
-
 ## Environment Variables for macOS
 
 If you are developing on macOS, you may need to set these environment variables before running CMake:
@@ -387,11 +355,10 @@ pg_llm uses Google Logging (glog) for logging. Please follow these best practice
 
 2. **Use safe logging macros**: Use our wrapper macros for logging:
    ```cpp
-   PG_LLM_LOG_INFO << "This is an info log";
-   PG_LLM_LOG_WARNING << "This is a warning log";
-   PG_LLM_LOG_ERROR << "This is an error log";
-   PG_LLM_LOG_FATAL << "This is a fatal log";
-   PG_LLM_VLOG(1) << "This is a verbose log";
+   PG_LLM_LOG_INFO("This is an info log");
+   PG_LLM_LOG_WARNING("This is a warning log");
+   PG_LLM_LOG_ERROR("This is an error log");
+   PG_LLM_LOG_FATAL("This is a fatal log");
    ```
 
 3. **Do not use original LOG macros**: Do not use glog's LOG macros directly, as they will conflict with PostgreSQL macros:
@@ -399,10 +366,4 @@ pg_llm uses Google Logging (glog) for logging. Please follow these best practice
    // LOG(INFO) << "this is wrong";  // Wrong!
    ```
 
-4. **Use correct namespace when accessing FLAGS variables**:
-   ```cpp
-   google::FLAGS_logtostderr = true;  // Correct
-   // FLAGS_logtostderr = true;  // Wrong!
-   ```
-
-For detailed logging system usage instructions, please refer to the [glog integration documentation](../docs/glog_integration.md). 
+For detailed logging system usage instructions, please refer to the [glog integration documentation](./docs/glog_integration.md). 
