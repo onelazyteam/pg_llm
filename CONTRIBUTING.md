@@ -288,6 +288,15 @@ git config core.hooksPath .githooks
 chmod +x .githooks/commit-msg
 ```
 
+### 🧹 Code Style
+This project uses **clang-format** to enforce C++ code style (based on Google style).
+
+- Run `./setup-clang-format.sh` after cloning.
+- All commits will be checked with clang-format locally and on GitHub Actions.
+- Fix formatting issues with:
+  ```bash
+  clang-format -i your_file.cpp
+
 ## Common Build Issues
 
 ### PostgreSQL Not Found

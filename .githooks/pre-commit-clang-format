@@ -1,0 +1,25 @@
+#!/bin/bash
+
+FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cpp|h|hpp|cc|cxx)$')
+
+if [ -z "$FILES" ]; then
+  exit 0
+fi
+
+FAIL=0
+
+for file in $FILES; do
+  clang-format --dry-run --Werror "$file"
+  if [ $? -ne 0 ]; then
+    echo "❌ clang-format check failed on $file"
+    FAIL=1
+  fi
+done
+
+if [ $FAIL -ne 0 ]; then
+  echo "�� Commit rejected due to formatting issues. Please run clang-format."
+  exit 1
+fi
+
+exit 0
+

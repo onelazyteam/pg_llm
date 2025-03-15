@@ -1,0 +1,51 @@
+# Use Google base style
+BasedOnStyle: Google
+
+# Indentation settings
+IndentWidth: 2               # Number of spaces for each indentation level
+TabWidth: 2                  # Number of spaces per tab character
+UseTab: Never                # Always use spaces instead of tabs
+
+# Braces behavior
+BreakBeforeBraces: Attach    # Place opening braces on the same line (e.g., for classes, functions)
+
+# Pointer/reference alignment
+DerivePointerAlignment: false
+PointerAlignment: Left       # Align '*' or '&' with the type (e.g., int* ptr)
+
+# Line breaking and wrapping
+ColumnLimit: 100             # Maximum line length before wrapping
+AllowShortFunctionsOnASingleLine: Empty   # Only allow short empty functions in one line
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+
+# Spacing rules
+SpaceAfterCStyleCast: true   # Add space after C-style cast: (int) value
+SpaceBeforeParens: ControlStatements  # Add space before parentheses in control statements (e.g., if, while)
+
+# Include and import behavior
+SortIncludes: true           # Automatically sort #include headers
+IncludeBlocks: Preserve      # Preserve include grouping and spacing
+
+# Namespace handling
+NamespaceIndentation: All    # Indent contents inside namespaces
+
+# Function parameters and arguments
+BinPackParameters: false     # Put each parameter on a new line if there are multiple
+BinPackArguments: false      # Put each argument on a new line in calls
+
+# Templates and lambdas
+AlwaysBreakTemplateDeclarations: Yes      # Always break long template declarations
+AllowShortLambdasOnASingleLine: None      # Never allow lambdas in a single line
+
+# Comments
+CommentPragmas: '^ IWYU pragma:'   # Keep special comments used by tooling
+ReflowComments: true               # Automatically wrap long comment lines
+FixNamespaceComments: true         # Add trailing comments for closing namespaces (// namespace foo)
+
+# C++11 features
+Cpp11BracedListStyle: true         # Use C++11 brace-initialization style
+
+# Others
+Standard: Latest                   # Use the latest language standard (C++20/C++23, depending on compiler)
+
