@@ -31,7 +31,7 @@ fi
 # Clone glog if it doesn't exist
 if [ ! -d "${SCRIPT_DIR}/${GLOG_DIR}" ]; then
     echo "Cloning glog repository..."
-    git clone --branch ${GLOG_VERSION} --depth 1 git@github.com:google/glog.git "${SCRIPT_DIR}/${GLOG_DIR}"
+    git clone --branch ${GLOG_VERSION} --depth 1 https://github.com/google/glog.git "${SCRIPT_DIR}/${GLOG_DIR}"
 fi
 
 # Build glog
