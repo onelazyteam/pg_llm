@@ -8,12 +8,12 @@ This PostgreSQL extension enables direct integration with various Large Language
   - [ ] OpenAI ChatGPT
   - [ ] DeepSeek
   - [ ] Tencent Hunyuan
-  - [ ] Alibaba Tongyi Qianwen
+  - [x] Alibaba Tongyi Qianwen
   - [ ] DouYin DouBao
   - [ ] BaiDu WenXin
-- [ ] Dynamic model management (add/remove models at runtime)
-- [ ] Large model metadata persistence
-- [ ] Importing the log library
+- [x] Dynamic model management (add/remove models at runtime)
+- [x] Large model metadata persistence
+- [x] Importing the log library
 - [ ] Support for streaming responses
 - [ ] Session-based multi-turn conversation support
 - [ ] Parallel inference with multiple models
@@ -51,16 +51,6 @@ The build system will automatically check for these dependencies and provide ins
 ### Logging with glog
 
 pg_llm uses Google's logging library (glog) for structured logging. The library is automatically downloaded and built during the compilation process. You can configure logging behavior using PostgreSQL configuration parameters:
-
-```sql
--- Set glog configuration
-ALTER SYSTEM SET pg_llm.glog_log_dir = '/path/to/logs';
-ALTER SYSTEM SET pg_llm.glog_min_log_level = 'WARNING';
-ALTER SYSTEM SET pg_llm.glog_max_log_size = 100;
-
--- Reload configuration
-SELECT pg_reload_conf();
-```
 
 See [thirdparty/README.md](thirdparty/README.md) for more details on glog integration and configuration.
 
@@ -182,8 +172,8 @@ SELECT * FROM pg_available_extensions WHERE name = 'pg_llm';
 ```sql
 SELECT pg_llm_add_model(
     'chatgpt',                         -- model type
-    'gpt4',                           -- instance name
-    'your-api-key',                   -- API key
+    'gpt4-chat',                       -- instance name
+    'your-api-key',                    -- API key
     '{
         "model_name": "gpt-4",
         "api_endpoint": "https://api.openai.com/v1/chat/completions"
@@ -238,10 +228,10 @@ SELECT pg_llm_add_model(
 1. Create a new session:
 ```sql
 -- Create a session and get the session ID
-SELECT pg_llm_create_session('gpt4') AS session_id;
+SELECT pg_llm_create_session('gpt4-chat') AS session_id;
 
 -- Create a session with a custom session ID
-SELECT pg_llm_create_session('gpt4', 'my-custom-session-id');
+SELECT pg_llm_create_session('gpt4-chat', 'my-custom-session-id');
 ```
 
 2. Chat within a session:
@@ -272,7 +262,7 @@ SELECT pg_llm_delete_session('session-123');
 ### Single-turn Chat
 
 ```sql
-SELECT pg_llm_chat('gpt4', 'What is PostgreSQL?');
+SELECT pg_llm_chat('gpt4-chat', 'What is PostgreSQL?');
 ```
 
 ### Parallel Multi-model Chat
@@ -287,7 +277,7 @@ SELECT pg_llm_parallel_chat(
 ### Removing Models
 
 ```sql
-SELECT pg_llm_remove_model('gpt4');
+SELECT pg_llm_remove_model('gpt4-chat');
 ```
 
 ## Development Guide

@@ -9,15 +9,16 @@ pg_llm/
 ├── include/                 # Public header files
 │   ├── models/            # Model interface headers
 │   └── utils/             # Utility header files
-│       └── pg_llm_glog.h  # glog integration header
-├── src/                    # Source files
-│   ├── models/           # Model implementations
+│   └── catalog/           # Catalog tables header files
+├── src/                   # Source files
+│   ├── models/          # Model implementations
 │   │   ├── chatgpt/     # ChatGPT model
 │   │   ├── deepseek/    # DeepSeek model
 │   │   ├── hunyuan/     # Tencent Hunyuan model
 │   │   └── qianwen/     # Alibaba Qianwen model
 │   └── utils/           # Utility implementations
 │       └── pg_llm_glog.cpp  # glog integration implementation
+│   └── catalog/         # Catalog tables interfaces
 ├── test/                  # Test files
 │   ├── sql/             # SQL test files
 │   └── expected/        # Expected test outputs
@@ -221,30 +222,6 @@ This will generate a `compile_commands.json` file in the build directory.
 3. Submit a Pull Request when complete
 4. Wait for code review and merge
 
-## Adding a New Model
-
-1. Create new model files:
-   ```bash
-   touch include/pg_llm/models/new_model.h
-   touch src/models/new_model/new_model.cpp
-   ```
-
-2. Implement the LLMInterface:
-   ```cpp
-   class NewModel : public LLMInterface {
-       // Implement required methods
-   };
-   ```
-
-3. Register the model in `src/api/pg_llm.cpp`:
-   ```cpp
-   manager.register_model("new_model", []() {
-       return std::make_unique<NewModel>();
-   });
-   ```
-
-4. Add tests in `test/sql/test_pg_llm.sql`
-
 ## Coding Standards
 
 - Use C++20 features appropriately
@@ -288,7 +265,7 @@ git config core.hooksPath .githooks
 chmod +x .githooks/commit-msg
 ```
 
-### 🧹 Code Style
+### Code Style
 This project uses **clang-format** to enforce C++ code style (based on Google style).
 
 - Run `./setup-clang-format.sh` after cloning.
@@ -353,26 +330,5 @@ cmake -DCMAKE_BUILD_TYPE=Debug \
 - Keep documentation up to date
 
 ## Logging
-
-pg_llm uses Google Logging (glog) for logging. Please follow these best practices:
-
-1. **Correctly include header files**: Always use our wrapper header file, do not include glog headers directly:
-   ```cpp
-   #include "utils/pg_llm_glog.h"  // Correct
-   // #include <glog/logging.h>  // Wrong!
-   ```
-
-2. **Use safe logging macros**: Use our wrapper macros for logging:
-   ```cpp
-   PG_LLM_LOG_INFO("This is an info log");
-   PG_LLM_LOG_WARNING("This is a warning log");
-   PG_LLM_LOG_ERROR("This is an error log");
-   PG_LLM_LOG_FATAL("This is a fatal log");
-   ```
-
-3. **Do not use original LOG macros**: Do not use glog's LOG macros directly, as they will conflict with PostgreSQL macros:
-   ```cpp
-   // LOG(INFO) << "this is wrong";  // Wrong!
-   ```
 
 For detailed logging system usage instructions, please refer to the [glog integration documentation](./docs/glog_integration.md). 

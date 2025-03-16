@@ -80,13 +80,8 @@ pg_llm developers can use glog in their code by including the glog header and us
 #include <glog/logging.h>
 
 // Log at different levels
-LOG(INFO) << "This is an info message";
-LOG(WARNING) << "This is a warning message";
-LOG(ERROR) << "This is an error message";
+pg_llm_log_info(__FILE__, __LINE__, "This is an info message");
+pg_llm_log_warning(__FILE__, __LINE__, "This is a warning message");
+pg_llm_log_error(__FILE__, __LINE__, "This is an error message");
 
-// Conditional logging
-LOG_IF(INFO, condition) << "This is logged only if condition is true";
-
-// Verbose logging (controlled by pg_llm.glog_v parameter)
-VLOG(1) << "This is a verbose message at level 1";
 ```
