@@ -164,9 +164,14 @@ pg_ctl restart -D /path/to/data/directory
 ```
 
 7. Create the extension in your database:
+After building, you need to enable the extension in PostgreSQL:
 
 ```sql
+-- Enable the extension
 CREATE EXTENSION pg_llm;
+
+-- Verify installation
+SELECT * FROM pg_available_extensions WHERE name = 'pg_llm';
 ```
 
 ## Usage

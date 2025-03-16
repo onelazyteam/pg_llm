@@ -1,5 +1,4 @@
-#ifndef DEEPSEEK_MODEL_H
-#define DEEPSEEK_MODEL_H
+#pragma once
 
 #include "models/llm_interface.h"
 
@@ -22,5 +21,3 @@ public:
 };
 
 } // namespace pg_llm
-
-#endif // DEEPSEEK_MODEL_H 

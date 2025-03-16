@@ -1,5 +1,4 @@
-#ifndef HUNYUAN_MODEL_H
-#define HUNYUAN_MODEL_H
+#pragma once
 
 #include "models/llm_interface.h"
 
@@ -22,5 +21,3 @@ public:
 };
 
 } // namespace pg_llm
-
-#endif // HUNYUAN_MODEL_H 

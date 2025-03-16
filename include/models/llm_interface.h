@@ -1,5 +1,4 @@
-#ifndef LLM_INTERFACE_H
-#define LLM_INTERFACE_H
+#pragma once
 
 #include <cstring>
 #include <ctime>
@@ -116,5 +115,3 @@ protected:
 // Factory function type for creating model instances
 using ModelCreator = std::function<std::unique_ptr<LLMInterface>()>;
 } // namespace pg_llm
-
-#endif // LLM_INTERFACE_H 

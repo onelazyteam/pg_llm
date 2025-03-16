@@ -1,12 +1,16 @@
 # Collect all source files
 file(GLOB_RECURSE SOURCES
     "*.cpp"
+    "catalog/*.cpp"
     "models/*.cpp"
     "models/chatgpt/*.cpp"
     "models/deepseek/*.cpp"
     "models/hunyuan/*.cpp"
     "models/qianwen/*.cpp"
+    "utils/*.cpp"
 )
+
+add_compile_options(-Wall -Wextra -Werror -Wunused-variable)
 
 # Add glog dependency - before other includes
 find_package(glog REQUIRED)

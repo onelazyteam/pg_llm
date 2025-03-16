@@ -9,8 +9,7 @@
  * and provides convenient logging wrappers.
  */
 
-#ifndef PG_LLM_GLOG_H
-#define PG_LLM_GLOG_H
+#pragma once
 
 /* Include PostgreSQL headers */
 #ifdef __cplusplus
@@ -24,8 +23,8 @@ extern "C" {
 #endif
 
 /* GUC variables for glog configuration */
-extern char *pg_llm_glog_log_dir;
-extern char *pg_llm_glog_min_log_level;
+extern char* pg_llm_glog_log_dir;
+extern char* pg_llm_glog_min_log_level;
 extern bool pg_llm_glog_log_to_stderr;
 extern bool pg_llm_glog_log_to_system_logger;
 extern int pg_llm_glog_max_log_size;
@@ -49,14 +48,14 @@ extern void pg_llm_glog_shutdown(void);
 }
 #endif
 
-/* 
- * C++ only logging functions 
+/*
+ * C++ only logging functions
  * We avoid including glog headers here to prevent conflicts
  */
 #ifdef __cplusplus
 
-#include <sstream>
 #include <cstdarg>
+#include <sstream>
 
 /* Simple wrapper functions for logging */
 void pg_llm_log_info(const char* file, int line, const char* format, ...);
@@ -71,5 +70,3 @@ void pg_llm_log_fatal(const char* file, int line, const char* format, ...);
 #define PG_LLM_LOG_FATAL(...) pg_llm_log_fatal(__FILE__, __LINE__, __VA_ARGS__)
 
 #endif /* __cplusplus */
-
-#endif /* PG_LLM_GLOG_H */ 

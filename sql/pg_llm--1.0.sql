@@ -1,8 +1,19 @@
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 \echo Use "CREATE EXTENSION pg_llm" to load this file. \quit
 
+CREATE SCHEMA _pg_llm_catalog;
+GRANT USAGE ON SCHEMA _pg_llm_catalog TO PUBLIC;
+
+-- Create models catalog table
+CREATE TABLE _pg_llm_catalog.pg_llm_models (
+    model_type TEXT,
+    instance_name TEXT,
+    api_key TEXT,
+    config TEXT
+);
+
 -- Create session management table
-CREATE TABLE pg_llm_sessions (
+CREATE TABLE _pg_llm_catalog.pg_llm_sessions (
     session_id TEXT PRIMARY KEY,
     model_instance TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -11,9 +22,9 @@ CREATE TABLE pg_llm_sessions (
 );
 
 -- Create session history table
-CREATE TABLE pg_llm_session_history (
+CREATE TABLE _pg_llm_catalog.pg_llm_session_history (
     id BIGSERIAL PRIMARY KEY,
-    session_id TEXT REFERENCES pg_llm_sessions(session_id) ON DELETE CASCADE,
+    session_id TEXT REFERENCES _pg_llm_catalog.pg_llm_sessions(session_id) ON DELETE CASCADE,
     role TEXT NOT NULL,
     content TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -60,7 +71,7 @@ CREATE FUNCTION pg_llm_get_session_history(
 )
 AS $$
     SELECT role, content, created_at
-    FROM pg_llm_session_history
+    FROM _pg_llm_catalog.pg_llm_session_history
     WHERE session_id = $1
     ORDER BY id ASC;
 $$ LANGUAGE SQL STRICT;
@@ -78,7 +89,7 @@ CREATE FUNCTION pg_llm_delete_session(
     session_id text
 ) RETURNS boolean
 AS $$
-    DELETE FROM pg_llm_sessions WHERE session_id = $1;
+    DELETE FROM _pg_llm_catalog.pg_llm_sessions WHERE session_id = $1;
     SELECT FOUND;
 $$ LANGUAGE SQL STRICT;
 
@@ -93,8 +104,8 @@ CREATE FUNCTION pg_llm_list_sessions() RETURNS TABLE (
 AS $$
     SELECT s.session_id, s.model_instance, s.created_at, s.last_used_at,
            COUNT(h.id) as message_count
-    FROM pg_llm_sessions s
-    LEFT JOIN pg_llm_session_history h ON s.session_id = h.session_id
+    FROM _pg_llm_catalog.pg_llm_sessions s
+    LEFT JOIN _pg_llm_catalog.pg_llm_session_history h ON s.session_id = h.session_id
     GROUP BY s.session_id, s.model_instance, s.created_at, s.last_used_at
     ORDER BY s.last_used_at DESC;
 $$ LANGUAGE SQL STRICT;
@@ -108,5 +119,5 @@ LANGUAGE C STRICT;
 
 -- Grant usage to public
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO PUBLIC;
-GRANT SELECT, INSERT, UPDATE, DELETE ON pg_llm_sessions TO PUBLIC;
-GRANT SELECT, INSERT ON pg_llm_session_history TO PUBLIC; 
+GRANT SELECT, INSERT, UPDATE, DELETE ON _pg_llm_catalog.pg_llm_sessions TO PUBLIC;
+GRANT SELECT, INSERT ON _pg_llm_catalog.pg_llm_session_history TO PUBLIC; 

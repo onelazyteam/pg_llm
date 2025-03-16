@@ -17,6 +17,9 @@
 #pragma pop_macro("LOG")
 
 #include "utils/pg_llm_glog.h"
+#include <cstring>
+#include <string>
+#include <iostream>
 
 extern "C" {
 #include "postgres.h"
@@ -129,50 +132,68 @@ pg_llm_glog_init_guc(void)
 /* Function to initialize glog */
 void
 pg_llm_glog_init(void)
-{
-    /* Initialize glog with program name */
-    google::InitGoogleLogging("pg_llm");
-
-    /* Set configuration based on GUC parameters */
-    
+{  
     /* Set log directory */
     if (pg_llm_glog_log_dir) {
         char glog_path[MAXPGPATH];
         snprintf(glog_path, MAXPGPATH, "%s/glog", pg_llm_glog_log_dir);
 
+        /* Create log directory with proper permissions */
         if (mkdir(glog_path, 0700) != 0 && errno != EEXIST) {
             ereport(ERROR,
                     (errcode_for_file_access(),
                      errmsg("could not create directory \"%s\": %m", glog_path)));
         }
         
+        /* Set log directory before initialization */
         FLAGS_log_dir = glog_path;
+        
+        /* Log the path we're using */
+        ereport(LOG, (errmsg("Setting glog log directory to: %s", glog_path)));
     }
     
     /* Set min log level */
     if (pg_llm_glog_min_log_level) {
-        if (strcmp(pg_llm_glog_min_log_level, "INFO") == 0)
+        if (strncmp(pg_llm_glog_min_log_level, "INFO", 4) == 0)
             FLAGS_minloglevel = google::GLOG_INFO;
-        else if (strcmp(pg_llm_glog_min_log_level, "WARNING") == 0)
+        else if (strncmp(pg_llm_glog_min_log_level, "WARNING", 7) == 0)
             FLAGS_minloglevel = google::GLOG_WARNING;
-        else if (strcmp(pg_llm_glog_min_log_level, "ERROR") == 0)
+        else if (strncmp(pg_llm_glog_min_log_level, "ERROR", 5) == 0)
             FLAGS_minloglevel = google::GLOG_ERROR;
-        else if (strcmp(pg_llm_glog_min_log_level, "FATAL") == 0)
+        else if (strncmp(pg_llm_glog_min_log_level, "FATAL", 5) == 0)
             FLAGS_minloglevel = google::GLOG_FATAL;
     }
     
-    /* Set log to stderr */
-    FLAGS_logtostderr = pg_llm_glog_log_to_stderr;
+    /* Disable stderr logging to prevent writing to PostgreSQL logs */
+    FLAGS_logtostderr = false;
     
-    /* Set log to system logger */
-    FLAGS_alsologtostderr = pg_llm_glog_log_to_system_logger;
+    /* Disable system logger */
+    FLAGS_alsologtostderr = false;
     
     /* Set max log size */
     FLAGS_max_log_size = pg_llm_glog_max_log_size;
     
     /* Set VLOG level */
     FLAGS_v = pg_llm_glog_v;
-    
+
+    /* Initialize glog with program name */
+    google::InitGoogleLogging("pg_llm");
+
+    /* Set log destinations after initialization */
+    if (pg_llm_glog_log_dir) {
+        char log_path[MAXPGPATH];
+        snprintf(log_path, MAXPGPATH, "%s/glog/pg_llm.log", pg_llm_glog_log_dir);
+        
+        /* Set all log levels to write to the same file */
+        google::SetLogDestination(google::GLOG_INFO, log_path);
+        google::SetLogDestination(google::GLOG_WARNING, log_path);
+        google::SetLogDestination(google::GLOG_ERROR, log_path);
+        google::SetLogDestination(google::GLOG_FATAL, log_path);
+        
+        /* Log the path we're using */
+        ereport(LOG, (errmsg("Setting glog log file to: %s", log_path)));
+    }
+
     /* Log initialization message */
     pg_llm_log_info(__FILE__, __LINE__, "pg_llm glog initialized");
 }

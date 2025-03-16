@@ -1,5 +1,4 @@
-#ifndef CHATGPT_MODEL_H
-#define CHATGPT_MODEL_H
+#pragma once
 
 #include "models/llm_interface.h"
 
@@ -21,5 +20,3 @@ public:
                               ResponseData &response_data) override;};
 
 } // namespace pg_llm
-
-#endif // CHATGPT_MODEL_H 

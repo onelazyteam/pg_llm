@@ -1,5 +1,4 @@
-#ifndef MODEL_MANAGER_H
-#define MODEL_MANAGER_H
+#pragma once
 
 #include "models/llm_interface.h"
 
@@ -23,6 +22,8 @@ public:
 
     // Remove a model instance
     bool remove_model_instance(const std::string& instance_name);
+
+    void add_model_internal(const std::string model_type);
 
     // Get a model instance
     std::shared_ptr<LLMInterface> get_model(const std::string& instance_name);
@@ -50,5 +51,3 @@ private:
 };
 
 } // namespace pg_llm
-
-#endif // MODEL_MANAGER_H 

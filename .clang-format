@@ -23,10 +23,6 @@ AllowShortLoopsOnASingleLine: false
 SpaceAfterCStyleCast: true   # Add space after C-style cast: (int) value
 SpaceBeforeParens: ControlStatements  # Add space before parentheses in control statements (e.g., if, while)
 
-# Include and import behavior
-SortIncludes: true           # Automatically sort #include headers
-IncludeBlocks: Preserve      # Preserve include grouping and spacing
-
 # Namespace handling
 NamespaceIndentation: All    # Indent contents inside namespaces
 

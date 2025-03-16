@@ -1,5 +1,4 @@
-#ifndef QIANWEN_MODEL_H
-#define QIANWEN_MODEL_H
+#pragma once
 
 #include "models/llm_interface.h"
 
@@ -22,5 +21,3 @@ public:
 };
 
 } // namespace pg_llm
-
-#endif // QIANWEN_MODEL_H 

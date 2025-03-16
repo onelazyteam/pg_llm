@@ -1,5 +1,4 @@
-#ifndef CHAT_SESSION_H
-#define CHAT_SESSION_H
+#pragma once
 
 #include "models/llm_interface.h"
 
@@ -59,5 +58,3 @@ private:
 };
 
 } // namespace pg_llm
-
-#endif // CHAT_SESSION_H 
