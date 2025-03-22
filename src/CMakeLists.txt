@@ -1,24 +1,20 @@
-# Collect all source files
-file(GLOB_RECURSE SOURCES
-    "*.cpp"
-    "catalog/*.cpp"
-    "models/*.cpp"
-    "models/chatgpt/*.cpp"
-    "models/deepseek/*.cpp"
-    "models/hunyuan/*.cpp"
-    "models/qianwen/*.cpp"
-    "utils/*.cpp"
+# Source files list
+set(SOURCES
+    pg_llm.cpp
+    catalog/pg_llm_models.cpp
+    models/model_manager.cpp
+    models/llm_interface.cpp
+    models/chat_session.cpp
+    models/chatgpt/chatgpt_model.cpp
+    models/deepseek/deepseek_model.cpp
+    models/hunyuan/hunyuan_model.cpp
+    models/qianwen/qianwen_model.cpp
+    utils/pg_llm_glog.cpp
 )
 
 add_compile_options(-Wall -Wextra -Werror -Wunused-variable)
 
-# Add glog dependency - before other includes
-find_package(glog REQUIRED)
-
-# Find glog library
-find_library(GLOG_LIBRARY NAMES glog PATHS ${GLOG_LIBRARY_DIR} NO_DEFAULT_PATH REQUIRED)
-
-# Create shared library target
+# Create shared library
 add_library(pg_llm MODULE ${SOURCES})
 
 # Set target properties
@@ -27,10 +23,9 @@ set_target_properties(pg_llm PROPERTIES
     OUTPUT_NAME "pg_llm"
 )
 
-# Set platform specific properties
+# Platform specific settings
 if(APPLE)
     set_target_properties(pg_llm PROPERTIES SUFFIX ".dylib")
-    # macOS specific link options
     target_link_options(pg_llm PRIVATE
         -bundle_loader "${PG_BINDIR}/postgres"
     )
@@ -38,32 +33,23 @@ else()
     set_target_properties(pg_llm PROPERTIES SUFFIX ".so")
 endif()
 
-# Add include directories
+# Include directories
 target_include_directories(pg_llm PRIVATE
     ${CMAKE_SOURCE_DIR}/include
+    ${PG_INCLUDEDIR_SERVER}
+    ${PGVECTOR_INCLUDE_DIR}
     ${OPENSSL_INCLUDE_DIR}
-    ${CURL_INCLUDE_DIRS}
-    ${JSONCPP_INCLUDE_DIRS}
+    ${CURL_INCLUDE_DIR}
+    ${JsonCpp_INCLUDE_DIR}
     ${GLOG_INCLUDE_DIR}
 )
 
-# Link dependent libraries
+# Link libraries
 target_link_libraries(pg_llm PRIVATE
-    ${OPENSSL_LIBRARIES}
-    ${CURL_LIBRARIES}
-    ${JSONCPP_LIBRARIES}
-    ${GLOG_LIBRARY}
+    OpenSSL::SSL
+    OpenSSL::Crypto
+    CURL::libcurl
+    JsonCpp::JsonCpp
+    -L${GLOG_LIBRARY_DIR} -lglog
     -L${PG_LIBDIR} -lpq -lpgcommon -lpgport
-    glog::glog
-)
-
-# Add debug information
-message(STATUS "Source files: ${SOURCES}")
-message(STATUS "OpenSSL include dir: ${OPENSSL_INCLUDE_DIR}")
-message(STATUS "CURL include dirs: ${CURL_INCLUDE_DIRS}")
-message(STATUS "JSONCPP include dirs: ${JSONCPP_INCLUDE_DIRS}")
-message(STATUS "JSONCPP libraries: ${JSONCPP_LIBRARIES}")
-message(STATUS "GLOG include dir: ${GLOG_INCLUDE_DIR}")
-message(STATUS "GLOG library: ${GLOG_LIBRARY}")
-message(STATUS "PostgreSQL lib dir: ${PG_LIBDIR}")
-message(STATUS "PostgreSQL bin dir: ${PG_BINDIR}") 
+) 
