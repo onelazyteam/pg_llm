@@ -23,7 +23,7 @@ This PostgreSQL extension enables direct integration with various Large Language
 - [ ] Audit logging
 - [ ] Session state management
 - [ ] Execute SQL through plug-in functions and let the LLM give optimization suggestions
-- [ ] Support natural language query, can enter human language through plug-ins to query database data
+- [x] Support natural language query, can enter human language through plug-ins to query database data
 - [ ] Generate reports, generate data analysis charts, intelligent analysis: built-in data statistical analysis and visualization suggestion generation
 - [ ] Full observability, complete record of decision-making process and intermediate results
 - [ ] Improve model accuracy, RAG knowledge base, feedback learning

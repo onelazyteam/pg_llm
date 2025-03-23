@@ -7,7 +7,7 @@ static Oid pg_llm_model_relid = InvalidOid;
 static inline void initialize_pg_llm_relid() {
   if (unlikely(!OidIsValid(pg_llm_model_relid))) {
     pg_llm_model_relid = get_relname_relid(
-        "pg_llm_models", get_namespace_oid("_pg_llm_catalog", false));
+                           "pg_llm_models", get_namespace_oid("_pg_llm_catalog", false));
   }
 }
 
@@ -59,7 +59,7 @@ void pg_llm_model_delete(char *instance_name) {
 
   /* End scan and close relation */
   heap_endscan(scan);
-  table_close(rel, RowExclusiveLock); 
+  table_close(rel, RowExclusiveLock);
 }
 
 bool pg_llm_model_get_infos(const std::string instance_name,

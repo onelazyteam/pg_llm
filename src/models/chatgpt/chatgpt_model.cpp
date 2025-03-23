@@ -9,135 +9,188 @@ ChatGPTModel::~ChatGPTModel() {
 }
 
 bool ChatGPTModel::initialize(const std::string& api_key, const std::string& model_config) {
-    if (!curl_) {
-        return false;
-    }
+  if (!curl_) {
+    return false;
+  }
 
-    api_key_ = api_key;
-    
-    // Parse model configuration
-    Json::Value config;
-    Json::Reader reader;
-    if (!reader.parse(model_config, config)) {
-        return false;
-    }
+  api_key_ = api_key;
 
-    model_name_ = config.get("model_name", "gpt-3.5-turbo").asString();
-    api_endpoint_ = config.get("api_endpoint", "https://api.openai.com/v1/chat/completions").asString();
+  // Parse model configuration
+  Json::Value config;
+  Json::Reader reader;
+  if (!reader.parse(model_config, config)) {
+    return false;
+  }
 
-    is_initialized_ = true;
-    return true;
+  model_name_ = config.get("model_name", "gpt-3.5-turbo").asString();
+  api_endpoint_ = config.get("api_endpoint", "https://api.openai.com/v1/chat/completions").asString();
+
+  is_initialized_ = true;
+  return true;
 }
 
 ModelResponse ChatGPTModel::chat_completion(const std::string& prompt) {
-    std::vector<ChatMessage> messages = {{"user", prompt}};
-    return chat_completion(messages);
+  std::vector<ChatMessage> messages = {{"user", prompt}};
+  return chat_completion(messages);
 }
 
 ModelResponse ChatGPTModel::chat_completion(const std::vector<ChatMessage>& messages) {
-    if (!is_ready()) {
-        return ModelResponse{"Model not initialized", 0.0f, get_model_name()};
-    }
+  if (!is_ready()) {
+    return ModelResponse{"Model not initialized", 0.0f, get_model_name()};
+  }
 
-    // Prepare request body
-    Json::Value request_body;
-    request_body["model"] = model_name_;
-    Json::Value message_arr(Json::arrayValue);
-    for (const auto& msg : messages) {
-        Json::Value message;
-        message["role"] = msg.role;
-        message["content"] = msg.content;
-        message_arr.append(message);
-    }
-    request_body["messages"] = message_arr;
-    request_body["stream"] = false;
-    request_body["temperature"] = 0.7;
+  // Prepare request body
+  Json::Value request_body;
+  request_body["model"] = model_name_;
+  Json::Value message_arr(Json::arrayValue);
+  for (const auto& msg : messages) {
+    Json::Value message;
+    message["role"] = msg.role;
+    message["content"] = msg.content;
+    message_arr.append(message);
+  }
+  request_body["messages"] = message_arr;
+  request_body["stream"] = false;
+  request_body["temperature"] = 0.7;
 
-    // Serializing the request body
-    Json::StreamWriterBuilder writer_builder;
-    std::string request_body_str = Json::writeString(writer_builder, request_body);
+  // Serializing the request body
+  Json::StreamWriterBuilder writer_builder;
+  std::string request_body_str = Json::writeString(writer_builder, request_body);
 
-    ResponseData response_data;
-    // Make API request
-    CURLcode res = make_api_request(api_endpoint_, request_body_str, response_data);
-    if (res != CURLE_OK) {
-        return ModelResponse{"Failed to make API request", 0.0f, get_model_name()};
-    } else {
-        long http_code = 0;
-        curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &http_code);
-        if (http_code == 200) {
-            Json::CharReaderBuilder reader_builder;
-            std::unique_ptr<Json::CharReader> reader(reader_builder.newCharReader());
-            Json::Value response_json;
-            std::string parse_errors;
+  ResponseData response_data;
+  // Make API request
+  CURLcode res = make_api_request(api_endpoint_, request_body_str, response_data);
+  if (res != CURLE_OK) {
+    return ModelResponse{"Failed to make API request", 0.0f, get_model_name()};
+  } else {
+    long http_code = 0;
+    curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE, &http_code);
+    if (http_code == 200) {
+      Json::CharReaderBuilder reader_builder;
+      std::unique_ptr<Json::CharReader> reader(reader_builder.newCharReader());
+      Json::Value response_json;
+      std::string parse_errors;
 
-            const char* contents_start = response_data.content.c_str();
-            if (reader->parse(contents_start,
-                              contents_start + response_data.content.size(),
-                              &response_json, &parse_errors)) {
-                if (response_json.isMember("choices") &&
-                    response_json["choices"].isArray() &&
-                    !response_json["choices"].empty()) {
-                    Json::Value& first_choice = response_json["choices"][0u];
-                    if (first_choice.isMember("message") &&
-                        first_choice["message"].isMember("content") &&
-                        first_choice["message"]["content"].isString()) {
-                        response_data.fullReply = first_choice["message"]["content"].asString();
-                        // Only return the content field, not the entire JSON response
-                        return ModelResponse{response_data.fullReply, 0.9, get_model_name()};
-                    }
-                }
-            }
+      const char* contents_start = response_data.content.c_str();
+      if (reader->parse(contents_start,
+                        contents_start + response_data.content.size(),
+                        &response_json, &parse_errors)) {
+        if (response_json.isMember("choices") &&
+            response_json["choices"].isArray() &&
+            !response_json["choices"].empty()) {
+          Json::Value& first_choice = response_json["choices"][0u];
+          if (first_choice.isMember("message") &&
+              first_choice["message"].isMember("content") &&
+              first_choice["message"]["content"].isString()) {
+            response_data.fullReply = first_choice["message"]["content"].asString();
+            // Only return the content field, not the entire JSON response
+            return ModelResponse{response_data.fullReply, 0.9, get_model_name()};
+          }
         }
+      }
     }
-    
-    // If extraction fails, return the entire original response
-    return ModelResponse{response_data.content, 0.7, get_model_name()};
+  }
+
+  // If extraction fails, return the entire original response
+  return ModelResponse{response_data.content, 0.7, get_model_name()};
 }
 
 std::string ChatGPTModel::get_model_name() const {
-    return model_name_;
+  return model_name_;
 }
 
 std::string ChatGPTModel::get_model_info() const {
-    return "OpenAI ChatGPT Model - " + model_name_;
+  return "OpenAI ChatGPT Model - " + model_name_;
 }
 
 bool ChatGPTModel::is_ready() const {
-    return is_initialized_ && curl_;
+  return is_initialized_ && curl_;
 }
 
 CURLcode ChatGPTModel::make_api_request(const std::string& endpoint,
                                         const std::string& request_body,
                                         ResponseData &response_data) {
-    if (!curl_) {
-        return CURLE_FAILED_INIT;
-    }
+  if (!curl_) {
+    return CURLE_FAILED_INIT;
+  }
 
-    // Reset response content
-    response_data.content.clear();
-    
-    struct curl_slist* headers = NULL;
-    headers = curl_slist_append(headers, "Content-Type: application/json");
-    headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key_).c_str());
+  // Reset response content
+  response_data.content.clear();
 
-    curl_easy_setopt(curl_, CURLOPT_URL, endpoint.c_str());
-    curl_easy_setopt(curl_, CURLOPT_POST, 1L);
-    curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, request_body.c_str());
-    curl_easy_setopt(curl_, CURLOPT_POSTFIELDSIZE, request_body.length());
-    curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, write_callback);
-    curl_easy_setopt(curl_, CURLOPT_WRITEDATA, &response_data);
-    curl_easy_setopt(curl_, CURLOPT_VERBOSE, 0L);
+  struct curl_slist* headers = NULL;
+  headers = curl_slist_append(headers, "Content-Type: application/json");
+  headers = curl_slist_append(headers, ("Authorization: Bearer " + api_key_).c_str());
 
-    CURLcode res = curl_easy_perform(curl_);
-    curl_slist_free_all(headers);
+  curl_easy_setopt(curl_, CURLOPT_URL, endpoint.c_str());
+  curl_easy_setopt(curl_, CURLOPT_POST, 1L);
+  curl_easy_setopt(curl_, CURLOPT_POSTFIELDS, request_body.c_str());
+  curl_easy_setopt(curl_, CURLOPT_POSTFIELDSIZE, request_body.length());
+  curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, write_callback);
+  curl_easy_setopt(curl_, CURLOPT_WRITEDATA, &response_data);
+  curl_easy_setopt(curl_, CURLOPT_VERBOSE, 0L);
 
-    if (res != CURLE_OK) {
-        return res;
-    }
+  CURLcode res = curl_easy_perform(curl_);
+  curl_slist_free_all(headers);
 
-    return CURLE_OK;
+  if (res != CURLE_OK) {
+    return res;
+  }
+
+  return CURLE_OK;
 }
 
-} // namespace pg_llm 
+std::vector<float> ChatGPTModel::get_embedding(const std::string& text) {
+  if (!is_ready()) {
+    throw std::runtime_error("Model is not initialized");
+  }
+
+  // Prepare the request body
+  Json::Value request_body;
+  request_body["input"] = text;
+  request_body["model"] = "text-embedding-ada-002";
+
+  // Serialize request body
+  Json::StreamWriterBuilder writer_builder;
+  std::string request_body_str = Json::writeString(writer_builder, request_body);
+
+  // Make API request
+  ResponseData response_data;
+  CURLcode res = make_api_request("https://api.openai.com/v1/embeddings",
+                                  request_body_str,
+                                  response_data);
+
+  if (res != CURLE_OK) {
+    throw std::runtime_error("Failed to get embedding: " + std::string(curl_easy_strerror(res)));
+  }
+
+  // Parse response
+  Json::Value response_json;
+  Json::CharReaderBuilder reader_builder;
+  std::unique_ptr<Json::CharReader> reader(reader_builder.newCharReader());
+  std::string parse_errors;
+
+  if (!reader->parse(response_data.content.c_str(),
+                     response_data.content.c_str() + response_data.content.size(),
+                     &response_json, &parse_errors)) {
+    throw std::runtime_error("Failed to parse embedding response: " + parse_errors);
+  }
+
+  // Extract embedding vector
+  if (response_json.isMember("data") &&
+      response_json["data"].isArray() &&
+      !response_json["data"].empty() &&
+      response_json["data"][0].isMember("embedding") &&
+      response_json["data"][0]["embedding"].isArray()) {
+
+    std::vector<float> embedding;
+    for (const auto& value : response_json["data"][0]["embedding"]) {
+      embedding.push_back(value.asFloat());
+    }
+    return embedding;
+  }
+
+  throw std::runtime_error("Invalid embedding response format");
+}
+
+} // namespace pg_llm
