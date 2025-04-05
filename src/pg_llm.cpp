@@ -46,12 +46,8 @@ extern "C" {
 #include "catalog/pg_llm_models.h"
 
 #include "models/chat_session.h"
-#include "models/chatgpt_model.h"
-#include "models/deepseek_model.h"
-#include "models/hunyuan_model.h"
 #include "models/llm_interface.h"
 #include "models/model_manager.h"
-#include "models/qianwen_model.h"
 #include "text2sql/text2sql.h"
 #include "utils/pg_llm_glog.h"
 
@@ -149,10 +145,11 @@ static void add_session_message(const std::string& session_id,
 
 // Add a new model instance
 Datum pg_llm_add_model(PG_FUNCTION_ARGS) {
-  text* model_type_text = PG_GETARG_TEXT_PP(0);
-  text* instance_name_text = PG_GETARG_TEXT_PP(1);
-  text* api_key_text = PG_GETARG_TEXT_PP(2);
-  text* config_text = PG_GETARG_TEXT_PP(3);
+  bool local_model = PG_GETARG_BOOL(0);
+  text* model_type_text = PG_GETARG_TEXT_PP(1);
+  text* instance_name_text = PG_GETARG_TEXT_PP(2);
+  text* api_key_text = PG_GETARG_TEXT_PP(3);
+  text* config_text = PG_GETARG_TEXT_PP(4);
 
   std::string model_type(VARDATA_ANY(model_type_text), VARSIZE_ANY_EXHDR(model_type_text));
   std::string instance_name(VARDATA_ANY(instance_name_text), VARSIZE_ANY_EXHDR(instance_name_text));
@@ -160,14 +157,20 @@ Datum pg_llm_add_model(PG_FUNCTION_ARGS) {
   std::string config(VARDATA_ANY(config_text), VARSIZE_ANY_EXHDR(config_text));
 
   // insert into catalog table
-  pg_llm_model_insert(const_cast<char*>(model_type.c_str()),
+  pg_llm_model_insert(local_model,
+                      const_cast<char*>(model_type.c_str()),
                       const_cast<char*>(instance_name.c_str()),
                       const_cast<char*>(api_key.c_str()),
                       const_cast<char*>(config.c_str()));
   // register model
   auto& manager = pg_llm::ModelManager::get_instance();
-  manager.add_model_internal(model_type);
-  bool success = manager.create_model_instance(model_type, instance_name, api_key, config);
+  manager.register_model(model_type, [model_type]() {
+    return std::make_unique<pg_llm::LLMInterface>(model_type);
+  });
+
+  bool success = manager.create_model_instance(local_model,
+    model_type, instance_name, api_key, config);
+
   PG_RETURN_BOOL(success);
 }
 

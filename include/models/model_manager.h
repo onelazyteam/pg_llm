@@ -15,15 +15,14 @@ public:
   void register_model(const std::string& model_type, ModelCreator creator);
 
   // Create and initialize a new model instance
-  bool create_model_instance(const std::string& model_type, 
-                           const std::string& instance_name,
-                           const std::string& api_key,
-                           const std::string& model_config);
+  bool create_model_instance(bool local_model,
+                             const std::string& model_type, 
+                             const std::string& instance_name,
+                             const std::string& api_key,
+                             const std::string& model_config);
 
   // Remove a model instance
   bool remove_model_instance(const std::string& instance_name);
-
-  void add_model_internal(const std::string model_type);
 
   // Get a model instance
   std::shared_ptr<LLMInterface> get_model(const std::string& instance_name);

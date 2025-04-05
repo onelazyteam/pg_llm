@@ -53,11 +53,15 @@ struct StreamContext {
 // Abstract base class for LLM models
 class LLMInterface {
 public:
-  LLMInterface() : curl_(nullptr), is_initialized_(false), is_streaming_(false) {
-      curl_ = curl_easy_init();
-      if (!curl_) {
-          throw std::runtime_error("Failed to initialize curl");
-      }
+  LLMInterface(const std::string& model_type) :
+               curl_(nullptr),
+               is_initialized_(false),
+               is_streaming_(false) {
+    curl_ = curl_easy_init();
+    if (!curl_) {
+      PG_LLM_LOG_ERROR("Failed to initialize curl");
+    }
+    model_type_ = model_type;
   }
 
   virtual ~LLMInterface() {
@@ -67,50 +71,56 @@ public:
   }
 
   // Initialize the model with API key and other configurations
-  virtual bool initialize(const std::string& api_key, const std::string& model_config) = 0;
+  bool initialize(bool local_model,
+    const std::string& api_key,
+    const std::string& model_config);
 
   // Single round chat completion
-  virtual ModelResponse chat_completion(const std::string& prompt) = 0;
+  ModelResponse chat_completion(const std::string& prompt);
 
   // Multi-turn chat completion
-  virtual ModelResponse chat_completion(const std::vector<ChatMessage>& messages) = 0;
+  ModelResponse chat_completion(const std::vector<ChatMessage>& messages);
 
   // Get model name
-  virtual std::string get_model_name() const = 0;
+  std::string get_model_name() const;
 
   // Get model capabilities and parameters
-  virtual std::string get_model_info() const = 0;
+  std::string get_model_info() const;
 
   // Validate if the model is ready for inference
-  virtual bool is_ready() const = 0;
+  bool is_ready() const;
 
-  virtual CURLcode make_api_request(const std::string& endpoint,
-                                const std::string& request_body,
-                                ResponseData &response_data) = 0;
+  CURLcode make_api_request(const std::string& endpoint,
+                            const std::string& request_body,
+                            ResponseData &response_data);
 
   // Get text embedding
-  virtual std::vector<float> get_embedding(const std::string& text) = 0;
+  std::vector<float> get_embedding(const std::string& text);
+
+  inline bool is_streaming() { return is_streaming_; }
 
 protected:
   // Simplified callback function (direct data accumulation)
   static inline size_t write_callback(void* contents, size_t size, size_t nmemb, void* userp) {
-      size_t realsize = size * nmemb;
-      ResponseData* resp = static_cast<ResponseData*>(userp);
-      resp->content.append(static_cast<char*>(contents), realsize);
-      return realsize;
+    size_t realsize = size * nmemb;
+    ResponseData* resp = static_cast<ResponseData*>(userp);
+    resp->content.append(static_cast<char*>(contents), realsize);
+    return realsize;
   }
 
-  virtual size_t stream_write_callback(void* contents, size_t size, size_t nmemb, void* userp);
+  size_t stream_write_callback(void* contents, size_t size, size_t nmemb, void* userp);
   
-  virtual std::string generate_signature(const std::string& request_body);
+  std::string generate_signature(const std::string& request_body);
 
-protected:
+private:
   CURL* curl_;
+  std::string model_type_;
   std::string api_key_;
   std::string access_key_id_;
   std::string access_key_secret_;
   std::string model_name_;
   std::string api_endpoint_;
+  bool local_model_;
   bool is_initialized_;
   bool is_streaming_;
 };

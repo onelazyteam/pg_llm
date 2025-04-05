@@ -68,10 +68,6 @@ set(SOURCES
     src/models/model_manager.cpp
     src/models/llm_interface.cpp
     src/models/chat_session.cpp
-    src/models/chatgpt/chatgpt_model.cpp
-    src/models/deepseek/deepseek_model.cpp
-    src/models/hunyuan/hunyuan_model.cpp
-    src/models/qianwen/qianwen_model.cpp
     src/utils/pg_llm_glog.cpp
     src/text2sql/pg_vector.cpp
     src/text2sql/text2sql.cpp

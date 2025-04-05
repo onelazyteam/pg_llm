@@ -4,11 +4,7 @@
 #include <thread>
 
 #include "catalog/pg_llm_models.h"
-#include "models/chatgpt_model.h"
-#include "models/deepseek_model.h"
-#include "models/hunyuan_model.h"
 #include "models/llm_interface.h"
-#include "models/qianwen_model.h"
 
 namespace pg_llm {
 
@@ -22,7 +18,8 @@ void ModelManager::register_model(const std::string& model_type, ModelCreator cr
   model_creators_[model_type] = creator;
 }
 
-bool ModelManager::create_model_instance(const std::string& model_type,
+bool ModelManager::create_model_instance(bool local_model,
+    const std::string& model_type,
     const std::string& instance_name,
     const std::string& api_key,
     const std::string& model_config) {
@@ -34,7 +31,8 @@ bool ModelManager::create_model_instance(const std::string& model_type,
   }
 
   auto model = creator_it->second();
-  if (!model->initialize(api_key, model_config)) {
+  if (!model->initialize(local_model, api_key, model_config)) {
+    PG_LLM_LOG_FATAL("model:%s init failed.", model_type.c_str());
     return false;
   }
 
@@ -45,30 +43,6 @@ bool ModelManager::create_model_instance(const std::string& model_type,
 bool ModelManager::remove_model_instance(const std::string& instance_name) {
   std::lock_guard<std::mutex> lock(mutex_);
   return model_instances_.erase(instance_name) > 0;
-}
-
-void ModelManager::add_model_internal(const std::string model_type) {
-  // Register available models
-  auto& manager = pg_llm::ModelManager::get_instance();
-  if (model_type == "chatgpt") {
-    manager.register_model("chatgpt", []() {
-      return std::make_unique<pg_llm::ChatGPTModel>();
-    });
-  } else if (model_type == "deepseek") {
-    manager.register_model("deepseek", []() {
-      return std::make_unique<pg_llm::DeepSeekModel>();
-    });
-  } else if (model_type == "hunyuan") {
-    manager.register_model("hunyuan", []() {
-      return std::make_unique<pg_llm::HunyuanModel>();
-    });
-  } else if (model_type == "qianwen") {
-    manager.register_model("qianwen", []() {
-      return std::make_unique<pg_llm::QianwenModel>();
-    });
-  } else {
-    pg_llm_log_error(__FILE__, __LINE__, "unknown type of model.");
-  }
 }
 
 std::shared_ptr<LLMInterface> ModelManager::get_model(const std::string& instance_name) {
@@ -82,14 +56,21 @@ std::shared_ptr<LLMInterface> ModelManager::get_model(const std::string& instanc
 
   // get from catalog table
   std::string model_type, api_key, config;
-  bool result = pg_llm_model_get_infos(instance_name, model_type, api_key, config);
+  bool local_model = false;
+  bool result = pg_llm_model_get_infos(&local_model, instance_name, model_type, api_key, config);
   if (unlikely(!result)) {
     return nullptr;
   } else {
-    add_model_internal(model_type);
     auto& manager = pg_llm::ModelManager::get_instance();
-    manager.create_model_instance(model_type, instance_name, api_key, config);
-    return get_model(instance_name);
+    manager.register_model(model_type, [model_type]() {
+      return std::make_unique<pg_llm::LLMInterface>(model_type);
+    });
+    result = manager.create_model_instance(local_model, model_type, instance_name, api_key, config);
+    if (result) {
+      return get_model(instance_name);
+    } else {
+      return nullptr;
+    }
   }
 }
 
@@ -133,10 +114,10 @@ std::vector<ModelResponse> ModelManager::parallel_inference(
     if (!model) continue;
 
     futures.push_back(std::async(std::launch::async,
-    [model, messages]() {
-      return model->chat_completion(messages);
-    }
-                                ));
+      [model, messages]() {
+        return model->chat_completion(messages);
+      }
+    ));
   }
 
   // Collect results

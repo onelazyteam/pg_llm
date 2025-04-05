@@ -4,20 +4,14 @@ This PostgreSQL extension enables direct integration with various Large Language
 
 ## Features
 
-- [ ] Support for multiple LLM providers:
-  - [ ] OpenAI ChatGPT
-  - [ ] DeepSeek
-  - [ ] Tencent Hunyuan
-  - [x] Alibaba Tongyi Qianwen
-  - [ ] DouYin DouBao
-  - [ ] BaiDu WenXin
+- [x] Support remote models
+- [x] Support local LLM
 - [x] Dynamic model management (add/remove models at runtime)
 - [x] Large model metadata persistence
 - [x] Importing the log library
 - [ ] Support for streaming responses
 - [ ] Session-based multi-turn conversation support
 - [ ] Parallel inference with multiple models
-- [ ] Support local LLM
 - [ ] Automatically select the model with the highest confidence (select by score), and use the local model as a backup (fall back to the local model when confidence is low)
 - [ ] Sensitive information encryption
 - [ ] Audit logging

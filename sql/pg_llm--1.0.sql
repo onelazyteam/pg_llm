@@ -6,6 +6,7 @@ GRANT USAGE ON SCHEMA _pg_llm_catalog TO PUBLIC;
 
 -- Create models catalog table
 CREATE TABLE _pg_llm_catalog.pg_llm_models (
+  local_model boolean,
   model_type TEXT,
   instance_name TEXT,
   api_key TEXT,
@@ -82,6 +83,7 @@ LANGUAGE C STRICT;
 
 -- Create functions
 CREATE FUNCTION pg_llm_add_model(
+  local_model boolean,
   model_type text,
   instance_name text,
   api_key text,
