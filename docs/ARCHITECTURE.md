@@ -16,16 +16,16 @@ pg_llm is a PostgreSQL extension that integrates Large Language Models (LLMs) in
                                   └───────┬────────┘
                      ┌────────────────────┼────────────────────┐
                      │                    │                    │
-             ┌───────▼──────┐    ┌───────▼──────┐    ┌───────▼──────┐
-             │     Model    │    │   Session    │    │     Chat     │
-             │   Manager    │    │   Manager    │    │  Interface   │
-             └───────┬──────┘    └──────────────┘    └──────────────┘
+             ┌───────▼──────┐     ┌───────▼──────┐     ┌───────▼──────┐
+             │     Model    │     │    NL2SQL    │     │     Chat     │
+             │   Manager    │     │   Text2SQL   │     │   Interface  │
+             └───────┬──────┘     └──────────────┘     └──────────────┘
                      │
-        ┌───────────┼───────────┐
-        │           │           │
-┌───────▼───┐ ┌────▼────┐ ┌────▼────┐
-│  ChatGPT  │ │ DeepSeek│ │ Hunyuan │
-└───────────┘ └─────────┘ └─────────┘
+         ┌───────────┼───────────┐
+         │           │           │
+ ┌───────▼───┐  ┌────▼────┐ ┌────▼────┐
+ │  ChatGPT  │  │ DeepSeek│ │   ...   │
+ └───────────┘  └─────────┘ └─────────┘
 ```
 
 ## Core Components
@@ -40,36 +40,9 @@ The Model Management Layer is responsible for:
 
 Key Components:
 - `ModelManager`: Singleton class managing model instances
-- `LLMInterface`: Abstract interface for all LLM implementations
-- Model Implementations: ChatGPT, DeepSeek, Hunyuan, Qianwen
+- `LLMInterface`: Interface for all LLM implementations, such as DeepSeek, Qianwen and so on.
 
-### 2. Session Management Layer
-
-Handles stateful chat interactions through:
-- Session creation and tracking
-- Message history management
-- Context management
-- Session cleanup
-
-Database Schema:
-```sql
-CREATE TABLE pg_llm_sessions (
-    session_id TEXT PRIMARY KEY,
-    model_instance TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE pg_llm_session_history (
-    id SERIAL PRIMARY KEY,
-    session_id TEXT REFERENCES pg_llm_sessions(session_id),
-    role TEXT NOT NULL,
-    content TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-### 3. SQL Interface Layer
+### 2. SQL Interface Layer
 
 Provides PostgreSQL functions for:
 
@@ -81,9 +54,8 @@ Provides PostgreSQL functions for:
    - `pg_llm_chat`: Single-turn chat
    - `pg_llm_parallel_chat`: Parallel chat with multiple models
 
-3. Session Management:
-   - `pg_llm_create_session`: Create chat sessions
-   - `pg_llm_chat_session`: Chat within sessions
+3. Text2SQL:
+   - `pg_llm_text2sql`: Convert natural language into SQL and execute the output results
 
 ## Key Features
 
@@ -93,23 +65,15 @@ Provides PostgreSQL functions for:
 - Parallel inference capabilities
 - Model configuration management
 
-### 2. Session Management
-- Stateful conversations
-- Message history tracking
-- Context management
-- Session isolation
-
-### 3. Security
+### 2. Security
 - Secure API key storage
 - Input validation and sanitization
-- Session isolation
 - SQL injection prevention
 
-### 4. Error Handling
+### 3. Error Handling
 - Comprehensive error reporting
 - Transaction safety
 - API error handling
-- Session state management
 
 ## Data Flow
 
@@ -118,36 +82,11 @@ Provides PostgreSQL functions for:
 User Query → SQL Function → Model Manager → LLM API → Response → User
 ```
 
-2. Session Chat:
-```
-User Query → SQL Function → Session Manager → Message History → 
-Model Manager → LLM API → Response → Session History → User
-```
-
-3. Parallel Chat:
+2. Parallel Chat:
 ```
 User Query → SQL Function → Model Manager → Multiple LLM APIs → 
 Response Aggregation → User
 ```
-
-## Configuration
-
-### Model Configuration
-Example JSON configuration:
-```json
-{
-    "model": "gpt-4",
-    "temperature": 0.7,
-    "max_tokens": 2000,
-    "timeout": 30
-}
-```
-
-### Session Configuration
-- Session timeout settings
-- History retention policy
-- Context window size
-- Rate limiting
 
 ## Future Enhancements
 

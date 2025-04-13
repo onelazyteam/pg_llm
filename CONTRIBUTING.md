@@ -12,10 +12,6 @@ pg_llm/
 │   └── catalog/           # Catalog tables header files
 ├── src/                   # Source files
 │   ├── models/          # Model implementations
-│   │   ├── chatgpt/     # ChatGPT model
-│   │   ├── deepseek/    # DeepSeek model
-│   │   ├── hunyuan/     # Tencent Hunyuan model
-│   │   └── qianwen/     # Alibaba Qianwen model
 │   └── utils/           # Utility implementations
 │       └── pg_llm_glog.cpp  # glog integration implementation
 │   └── catalog/         # Catalog tables interfaces

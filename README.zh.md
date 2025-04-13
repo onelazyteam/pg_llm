@@ -23,8 +23,6 @@ pg_llm 是一个 PostgreSQL 扩展，它集成了大语言模型(LLM)的能力�
 
 3. **对话系统**
    - 多轮对话支持
-   - 上下文管理
-   - 会话历史记录
 
 4. **性能优化**
    - 多级缓存机制
@@ -92,18 +90,6 @@ SELECT pg_llm_text2sql('my_model', '查询', NULL, true,
   '{"parallel_processing": true, "max_parallel_threads": 4}');
 ```
 
-## 监控
-
-1. 查看会话：
-```sql
-SELECT * FROM pg_llm_list_sessions();
-```
-
-2. 查看历史：
-```sql
-SELECT * FROM pg_llm_get_session_history('session_id');
-```
-
 ## 安全建议
 
 1. API 密钥管理
@@ -123,4 +109,4 @@ MIT License
 
 - 问题报告：GitHub Issues
 - 讨论：GitHub Discussions
-- 邮件：your-email@example.com 
+- 邮件：18611856983@163.com

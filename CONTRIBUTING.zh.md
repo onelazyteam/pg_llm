@@ -58,13 +58,10 @@ make
 ```
 
 2. **类型说明**
-   - feat: 新功能
-   - fix: 修复问题
-   - docs: 文档更新
-   - style: 代码格式调整
-   - refactor: 代码重构
-   - test: 测试相关
-   - chore: 构建过程或辅助工具的变动
+   - feature: 新功能
+   - bug: 修复问题
+   - doc: 文档更新
+   - shell: 脚本
 
 3. **分支管理**
    - main: 主分支
@@ -137,4 +134,4 @@ make
 
 - 问题报告：GitHub Issues
 - 讨论：GitHub Discussions
-- 邮件：your-email@example.com 
+- 邮件：18611856983@163.com 

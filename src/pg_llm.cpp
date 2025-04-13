@@ -19,8 +19,6 @@ extern "C" {
   PG_FUNCTION_INFO_V1(pg_llm_remove_model);
   PG_FUNCTION_INFO_V1(pg_llm_chat);
   PG_FUNCTION_INFO_V1(pg_llm_parallel_chat);
-  PG_FUNCTION_INFO_V1(pg_llm_create_session);
-  PG_FUNCTION_INFO_V1(pg_llm_chat_session);
   PG_FUNCTION_INFO_V1(pg_llm_text2sql);
   PG_FUNCTION_INFO_V1(pg_llm_store_vector);
   PG_FUNCTION_INFO_V1(pg_llm_search_vectors);
@@ -30,8 +28,6 @@ extern "C" {
   Datum pg_llm_remove_model(PG_FUNCTION_ARGS);
   Datum pg_llm_chat(PG_FUNCTION_ARGS);
   Datum pg_llm_parallel_chat(PG_FUNCTION_ARGS);
-  Datum pg_llm_create_session(PG_FUNCTION_ARGS);
-  Datum pg_llm_chat_session(PG_FUNCTION_ARGS);
   Datum pg_llm_text2sql(PG_FUNCTION_ARGS);
   Datum pg_llm_store_vector(PG_FUNCTION_ARGS);
   Datum pg_llm_search_vectors(PG_FUNCTION_ARGS);
@@ -45,7 +41,6 @@ extern "C" {
 // Include our wrapper header
 #include "catalog/pg_llm_models.h"
 
-#include "models/chat_session.h"
 #include "models/llm_interface.h"
 #include "models/model_manager.h"
 #include "text2sql/text2sql.h"
@@ -78,69 +73,6 @@ void _PG_fini(void) {
 
   /* Shutdown glog */
   pg_llm_glog_shutdown();
-}
-
-// Helper function to generate UUID
-static std::string generate_uuid() {
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_int_distribution<> dis(0, 15);
-  std::uniform_int_distribution<> dis2(8, 11);
-
-  std::stringstream ss;
-  ss << std::hex;
-
-  for (int i = 0; i < 8; i++) {
-    ss << dis(gen);
-  }
-  ss << "-";
-  for (int i = 0; i < 4; i++) {
-    ss << dis(gen);
-  }
-  ss << "-4";  // Version 4
-  for (int i = 0; i < 3; i++) {
-    ss << dis(gen);
-  }
-  ss << "-";
-  ss << dis2(gen);  // Variant
-  for (int i = 0; i < 3; i++) {
-    ss << dis(gen);
-  }
-  ss << "-";
-  for (int i = 0; i < 12; i++) {
-    ss << dis(gen);
-  }
-
-  return ss.str();
-}
-
-// Helper function to update session last_used_at
-static void update_session_timestamp(const std::string& session_id) {
-  SPI_connect();
-  char sql[256];
-  snprintf(sql,
-           sizeof(sql),
-           "UPDATE pg_llm_sessions SET last_used_at = CURRENT_TIMESTAMP WHERE session_id = '%s'",
-           session_id.c_str());
-  SPI_exec(sql, 0);
-  SPI_finish();
-}
-
-// Helper function to add message to session history
-static void add_session_message(const std::string& session_id,
-                                const std::string& role,
-                                const std::string& content) {
-  SPI_connect();
-  char sql[1024];
-  snprintf(
-    sql,
-    sizeof(sql),
-    "INSERT INTO pg_llm_session_history (session_id, role, content) VALUES ('%s', '%s', '%s')",
-    session_id.c_str(),
-    role.c_str(),
-    content.c_str());
-  SPI_exec(sql, 0);
-  SPI_finish();
 }
 
 // Add a new model instance
@@ -206,120 +138,6 @@ Datum pg_llm_chat(PG_FUNCTION_ARGS) {
   }
 
   auto response = model->chat_completion(prompt);
-  text* result = cstring_to_text(response.response.c_str());
-  PG_RETURN_TEXT_P(result);
-}
-
-// Create a new chat session
-Datum pg_llm_create_session(PG_FUNCTION_ARGS) {
-  text* model_instance_text = PG_GETARG_TEXT_PP(0);
-  std::string model_instance(VARDATA_ANY(model_instance_text),
-                             VARSIZE_ANY_EXHDR(model_instance_text));
-
-  // Generate session ID if not provided
-  std::string session_id;
-  if (PG_NARGS() > 1 && !PG_ARGISNULL(1)) {
-    text* session_id_text = PG_GETARG_TEXT_PP(1);
-    session_id = std::string(VARDATA_ANY(session_id_text), VARSIZE_ANY_EXHDR(session_id_text));
-  } else {
-    session_id = generate_uuid();
-  }
-
-  // Verify model instance exists
-  auto& manager = pg_llm::ModelManager::get_instance();
-  auto model = manager.get_model(model_instance);
-  if (!model) {
-    ereport(ERROR,
-            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("Model instance not found: %s", model_instance.c_str())));
-  }
-
-  // Create session record
-  SPI_connect();
-  char sql[256];
-  snprintf(sql,
-           sizeof(sql),
-           "INSERT INTO pg_llm_sessions (session_id, model_instance) VALUES ('%s', '%s')",
-           session_id.c_str(),
-           model_instance.c_str());
-  SPI_exec(sql, 0);
-  SPI_finish();
-
-  text* result = cstring_to_text(session_id.c_str());
-  PG_RETURN_TEXT_P(result);
-}
-
-// Chat within a session
-Datum pg_llm_chat_session(PG_FUNCTION_ARGS) {
-  text* session_id_text = PG_GETARG_TEXT_PP(0);
-  text* prompt_text = PG_GETARG_TEXT_PP(1);
-
-  std::string session_id(VARDATA_ANY(session_id_text), VARSIZE_ANY_EXHDR(session_id_text));
-  std::string prompt(VARDATA_ANY(prompt_text), VARSIZE_ANY_EXHDR(prompt_text));
-
-  // Get session information
-  SPI_connect();
-  char sql[256];
-  snprintf(sql,
-           sizeof(sql),
-           "SELECT model_instance FROM pg_llm_sessions WHERE session_id = '%s'",
-           session_id.c_str());
-
-  SPITupleTable* tuptable;
-  uint64 proc = SPI_exec(sql, 0);
-  if (proc != SPI_OK_SELECT || SPI_processed == 0) {
-    SPI_finish();
-    ereport(ERROR,
-            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("Session not found: %s", session_id.c_str())));
-  }
-
-  tuptable = SPI_tuptable;
-  char* model_instance = SPI_getvalue(tuptable->vals[0], tuptable->tupdesc, 1);
-  SPI_finish();
-
-  // Get model
-  auto& manager = pg_llm::ModelManager::get_instance();
-  auto model = manager.get_model(model_instance);
-  if (!model) {
-    ereport(ERROR,
-            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-             errmsg("Model instance not found: %s", model_instance)));
-  }
-
-  // Get session history
-  std::vector<pg_llm::ChatMessage> messages;
-  SPI_connect();
-  snprintf(
-    sql,
-    sizeof(sql),
-    "SELECT role, content FROM pg_llm_session_history WHERE session_id = '%s' ORDER BY id ASC",
-    session_id.c_str());
-
-  proc = SPI_exec(sql, 0);
-  if (proc == SPI_OK_SELECT) {
-    tuptable = SPI_tuptable;
-    for (uint64 i = 0; i < SPI_processed; i++) {
-      char* role = SPI_getvalue(tuptable->vals[i], tuptable->tupdesc, 1);
-      char* content = SPI_getvalue(tuptable->vals[i], tuptable->tupdesc, 2);
-      messages.push_back({role, content});
-    }
-  }
-  SPI_finish();
-
-  // Add user message to history
-  add_session_message(session_id, "user", prompt);
-  messages.push_back({"user", prompt});
-
-  // Get response from model
-  auto response = model->chat_completion(messages);
-
-  // Add assistant response to history
-  add_session_message(session_id, "assistant", response.response);
-
-  // Update session timestamp
-  update_session_timestamp(session_id);
-
   text* result = cstring_to_text(response.response.c_str());
   PG_RETURN_TEXT_P(result);
 }

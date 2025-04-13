@@ -162,47 +162,7 @@ SELECT * FROM pg_available_extensions WHERE name = 'pg_llm';
 
 ### Adding Models
 
-1. ChatGPT:
-```sql
-SELECT pg_llm_add_model(
-    'chatgpt',                         -- model type
-    'gpt4-chat',                       -- instance name
-    'your-api-key',                    -- API key
-    '{
-        "model_name": "gpt-4",
-        "api_endpoint": "https://api.openai.com/v1/chat/completions"
-    }'
-);
-```
-
-2. DeepSeek:
-```sql
-SELECT pg_llm_add_model(
-    'deepseek',
-    'deepseek-chat',
-    'your-api-key',
-    '{
-        "model_name": "deepseek-chat",
-        "api_endpoint": "https://api.deepseek.com/v1/chat/completions"
-    }'
-);
-```
-
-3. Tencent Hunyuan:
-```sql
-SELECT pg_llm_add_model(
-    'hunyuan',
-    'hunyuan-chat',
-    'your-api-key',
-    '{
-        "model_name": "hunyuan",
-        "api_endpoint": "https://hunyuan.cloud.tencent.com/hyllm/v1/chat/completions",
-        "secret_key": "your-secret-key"
-    }'
-);
-```
-
-4. Alibaba Tongyi Qianwen:
+1. Alibaba Tongyi Qianwen:
 ```sql
 SELECT pg_llm_add_model(
     'qianwen',
@@ -215,42 +175,6 @@ SELECT pg_llm_add_model(
         "access_key_secret": "your-access-key-secret"
     }'
 );
-```
-
-### Session Management
-
-1. Create a new session:
-```sql
--- Create a session and get the session ID
-SELECT pg_llm_create_session('gpt4-chat') AS session_id;
-
--- Create a session with a custom session ID
-SELECT pg_llm_create_session('gpt4-chat', 'my-custom-session-id');
-```
-
-2. Chat within a session:
-```sql
--- Send a message and get a response
-SELECT pg_llm_chat_session('session-123', 'What is a database?');
-
--- Send follow-up questions (maintains context)
-SELECT pg_llm_chat_session('session-123', 'What are its types?');
-SELECT pg_llm_chat_session('session-123', 'Tell me more about relational databases.');
-```
-
-3. View session history:
-```sql
--- Get all messages in the session
-SELECT * FROM pg_llm_get_session_history('session-123');
-```
-
-4. Manage sessions:
-```sql
--- List all active sessions
-SELECT * FROM pg_llm_list_sessions();
-
--- Delete a specific session
-SELECT pg_llm_delete_session('session-123');
 ```
 
 ### Single-turn Chat

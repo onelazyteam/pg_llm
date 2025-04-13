@@ -4,7 +4,7 @@ commit_msg_file=$1
 commit_msg=$(cat "$commit_msg_file")
 
 # Define commit message format pattern
-pattern='^[[]+(feature|bug|doc|task|shell)[]] #[0-9]+ .+'
+pattern='^[[]+(feature|bug|doc|task|shell|test)[]] #[0-9]+ .+'
 
 if ! [[ $commit_msg =~ $pattern ]]; then
     echo "Error: Invalid commit message format"
@@ -16,6 +16,7 @@ if ! [[ $commit_msg =~ $pattern ]]; then
     echo "  [task] #789 Complete a task"
     echo "  [doc] #1000 Update documentation"
     echo "  [shell] #1001 Update shell script"
+    echo "  [text] #1002 Add test cases"
     exit 1
 fi
 
