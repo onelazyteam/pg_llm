@@ -10,7 +10,7 @@
 - [x] Large model metadata persistence
 - [x] Importing the log library
 - [ ] Support for streaming responses
-- [ ] Session-based multi-turn conversation support
+- [x] Session-based multi-turn conversation support
 - [ ] Parallel inference with multiple models
 - [ ] Automatically select the model with the highest confidence (select by score), and use the local model as a backup (fall back to the local model when confidence is low)
 - [ ] Sensitive information encryption
@@ -53,6 +53,7 @@ shared_preload_libraries = 'pg_llm'
  Then need to enable the extension in PostgreSQL:
 
 ```sql
+CREATE EXTENSION vector;  -- text2sql depends on pg vector
 CREATE EXTENSION pg_llm;
 
 -- Verify
@@ -115,6 +116,19 @@ SELECT pg_llm_chat('qianwen-chat', 'Who are you?');
 
 ```sql
 SELECT pg_llm_text2sql('qianwen-chat', 'Create a user table.', NULL, false);
+SELECT pg_llm_text2sql('qianwen-chat', 'Insert 10 rows of random data into the user table.', NULL, false);
+SELECT pg_llm_text2sql('qianwen-chat', 'Query the user table.', NULL, false);
+```
+
+
+
+## Mutil-turn char
+
+```sql
+SELECT pg_llm_create_session();
+SELECT pg_llm_multi_turn_chat('qianwen-chat', '5PN2qmWqBlQ9wQj99nsQzldVI5ZuGXbE', 'who are you?')
+SELECT pg_llm_multi_turn_chat('qianwen-chat', '5PN2qmWqBlQ9wQj99nsQzldVI5ZuGXbE', 'What was the previous question?');
+SELECT pg_llm_get_sessions();
 ```
 
 

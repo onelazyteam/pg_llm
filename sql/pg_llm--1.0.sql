@@ -104,5 +104,40 @@ CREATE OR REPLACE FUNCTION pg_llm_text2sql(
 AS 'MODULE_PATHNAME', 'pg_llm_text2sql'
 LANGUAGE C VOLATILE;
 
+-- Create a new chat session
+CREATE OR REPLACE FUNCTION pg_llm_create_session(max_messages integer DEFAULT 10)
+RETURNS text
+AS 'MODULE_PATHNAME', 'pg_llm_create_session'
+LANGUAGE C STRICT;
+
+-- Multi-turn chat with a specific model
+CREATE OR REPLACE FUNCTION pg_llm_multi_turn_chat(instance_name text, session_id text, prompt text)
+RETURNS text
+AS 'MODULE_PATHNAME', 'pg_llm_multi_turn_chat'
+LANGUAGE C STRICT;
+
+-- Set maximum number of messages for a session
+CREATE OR REPLACE FUNCTION pg_llm_set_max_messages(session_id text, max_messages integer)
+RETURNS void
+AS 'MODULE_PATHNAME', 'pg_llm_set_max_messages'
+LANGUAGE C STRICT;
+
+-- Get all sessions information
+CREATE OR REPLACE FUNCTION pg_llm_get_sessions()
+RETURNS TABLE (
+    session_id text,
+    message_count integer,
+    max_messages integer,
+    last_active_time timestamptz
+)
+AS 'MODULE_PATHNAME', 'pg_llm_get_sessions'
+LANGUAGE C STRICT;
+
+-- Clean up expired sessions
+CREATE OR REPLACE FUNCTION pg_llm_cleanup_sessions(timeout_seconds integer)
+RETURNS void
+AS 'MODULE_PATHNAME', 'pg_llm_cleanup_sessions'
+LANGUAGE C STRICT;
+
 -- Grant usage to public
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO PUBLIC;

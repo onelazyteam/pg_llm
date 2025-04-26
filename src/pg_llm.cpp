@@ -23,6 +23,11 @@ extern "C" {
   PG_FUNCTION_INFO_V1(pg_llm_store_vector);
   PG_FUNCTION_INFO_V1(pg_llm_search_vectors);
   PG_FUNCTION_INFO_V1(pg_llm_get_embedding);
+  PG_FUNCTION_INFO_V1(pg_llm_multi_turn_chat);
+  PG_FUNCTION_INFO_V1(pg_llm_create_session);
+  PG_FUNCTION_INFO_V1(pg_llm_cleanup_sessions);
+  PG_FUNCTION_INFO_V1(pg_llm_get_sessions);
+  PG_FUNCTION_INFO_V1(pg_llm_set_max_messages);
 
   Datum pg_llm_add_model(PG_FUNCTION_ARGS);
   Datum pg_llm_remove_model(PG_FUNCTION_ARGS);
@@ -32,6 +37,11 @@ extern "C" {
   Datum pg_llm_store_vector(PG_FUNCTION_ARGS);
   Datum pg_llm_search_vectors(PG_FUNCTION_ARGS);
   Datum pg_llm_get_embedding(PG_FUNCTION_ARGS);
+  Datum pg_llm_multi_turn_chat(PG_FUNCTION_ARGS);
+  Datum pg_llm_create_session(PG_FUNCTION_ARGS);
+  Datum pg_llm_cleanup_sessions(PG_FUNCTION_ARGS);
+  Datum pg_llm_set_max_messages(PG_FUNCTION_ARGS);
+  Datum pg_llm_get_sessions(PG_FUNCTION_ARGS);
 
   /* Extension initialization and finalization functions */
   void _PG_init(void);
@@ -43,6 +53,7 @@ extern "C" {
 
 #include "models/llm_interface.h"
 #include "models/model_manager.h"
+#include "models/session_manager.h"
 #include "text2sql/text2sql.h"
 #include "utils/pg_llm_glog.h"
 
@@ -455,4 +466,125 @@ Datum pg_llm_text2sql(PG_FUNCTION_ARGS) {
             (errcode(ERRCODE_INTERNAL_ERROR),
              errmsg("Failed to generate SQL: %s", e.what())));
   }
+}
+
+// Create a new chat session
+Datum pg_llm_create_session(PG_FUNCTION_ARGS) {
+  int max_messages = PG_ARGISNULL(0) ? 10 : PG_GETARG_INT32(0);
+  auto& session_manager = pg_llm::SessionManager::get_instance();
+  std::string session_id = session_manager.create_session(max_messages);
+  PG_RETURN_TEXT_P(cstring_to_text(session_id.c_str()));
+}
+
+// multi chat
+Datum pg_llm_multi_turn_chat(PG_FUNCTION_ARGS) {
+  text* instance_name_text = PG_GETARG_TEXT_PP(0);
+  text* session_id_text = PG_GETARG_TEXT_PP(1);
+  text* prompt_text = PG_GETARG_TEXT_PP(2);
+
+  std::string instance_name(VARDATA_ANY(instance_name_text), VARSIZE_ANY_EXHDR(instance_name_text));
+  std::string session_id(VARDATA_ANY(session_id_text), VARSIZE_ANY_EXHDR(session_id_text));
+  std::string prompt(VARDATA_ANY(prompt_text), VARSIZE_ANY_EXHDR(prompt_text));
+
+  auto& session_manager = pg_llm::SessionManager::get_instance();
+  auto session = session_manager.get_session(session_id);
+  
+  if (!session) {
+    ereport(ERROR,
+            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+             errmsg("Session not found: %s", session_id.c_str())));
+  }
+
+  auto& manager = pg_llm::ModelManager::get_instance();
+  auto model = manager.get_model(instance_name);
+
+  if (!model) {
+    ereport(ERROR,
+            (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+             errmsg("Model instance not found: %s", instance_name.c_str())));
+  }
+
+  // Add user message to the conversation
+  session_manager.add_message(session_id, {"user", prompt});
+
+  // Get all messages in a conversation
+  auto response = model->chat_completion(session->messages);
+
+  // Add assistant replies to conversations
+  session_manager.add_message(session_id, {"assistant", response.response});
+
+  text* result = cstring_to_text(response.response.c_str());
+  PG_RETURN_TEXT_P(result);
+}
+
+// Set maximum number of messages for a session
+Datum pg_llm_set_max_messages(PG_FUNCTION_ARGS) {
+  text *session_id = PG_GETARG_TEXT_P(0);
+  int max_messages = PG_GETARG_INT32(1);
+  
+  auto& session_manager = pg_llm::SessionManager::get_instance();
+  if (!session_manager.set_max_messages(text_to_cstring(session_id), max_messages)) {
+      ereport(ERROR,
+              (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+               errmsg("Session not found")));
+  }
+  
+  PG_RETURN_VOID();
+}
+
+// Get information about all sessions
+Datum pg_llm_get_sessions(PG_FUNCTION_ARGS) {
+  FuncCallContext *funcctx;
+  MemoryContext oldcontext;
+  
+  if (SRF_IS_FIRSTCALL()) {
+      funcctx = SRF_FIRSTCALL_INIT();
+      oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+      
+      // Create tuple descriptor for return values
+      TupleDesc tupdesc = CreateTemplateTupleDesc(4);
+      TupleDescInitEntry(tupdesc, (AttrNumber) 1, "session_id", TEXTOID, -1, 0);
+      TupleDescInitEntry(tupdesc, (AttrNumber) 2, "message_count", INT4OID, -1, 0);
+      TupleDescInitEntry(tupdesc, (AttrNumber) 3, "max_messages", INT4OID, -1, 0);
+      TupleDescInitEntry(tupdesc, (AttrNumber) 4, "last_active", TIMESTAMPTZOID, -1, 0);
+      
+      funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+      
+      // Get all sessions
+      auto& session_manager = pg_llm::SessionManager::get_instance();
+      auto all_sessions = session_manager.get_all_sessions();
+      funcctx->user_fctx = new std::vector<pg_llm::ChatSession>(all_sessions);
+      funcctx->max_calls = all_sessions.size();
+      
+      MemoryContextSwitchTo(oldcontext);
+  }
+  
+  funcctx = SRF_PERCALL_SETUP();
+  auto sessions = static_cast<std::vector<pg_llm::ChatSession>*>(funcctx->user_fctx);
+  
+  if (funcctx->call_cntr < funcctx->max_calls) {
+      const auto& session = (*sessions)[funcctx->call_cntr];
+      
+      Datum values[4];
+      bool nulls[4] = {false, false, false, false};
+      
+      values[0] = CStringGetTextDatum(session.session_id.c_str());
+      values[1] = Int32GetDatum(session.messages.size());
+      values[2] = Int32GetDatum(session.max_messages);
+      values[3] = TimestampTzGetDatum(session.last_active_time);
+      
+      HeapTuple tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+      SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+  } else {
+      delete sessions;
+      SRF_RETURN_DONE(funcctx);
+  }
+}
+
+// Clean up expired sessions
+Datum pg_llm_cleanup_sessions(PG_FUNCTION_ARGS) {
+  int timeout_seconds = PG_GETARG_INT32(0);
+  auto& session_manager = pg_llm::SessionManager::get_instance();
+  session_manager.cleanup_expired_sessions(timeout_seconds);
+  PG_RETURN_VOID();
 }

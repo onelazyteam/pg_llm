@@ -10,7 +10,7 @@ This PostgreSQL extension enables direct integration with various Large Language
 - [x] Large model metadata persistence
 - [x] Importing the log library
 - [ ] Support for streaming responses
-- [ ] Session-based multi-turn conversation support
+- [x] Session-based multi-turn conversation support
 - [ ] Parallel inference with multiple models
 - [ ] Automatically select the model with the highest confidence (select by score), and use the local model as a backup (fall back to the local model when confidence is low)
 - [ ] Sensitive information encryption
@@ -152,6 +152,7 @@ After building, you need to enable the extension in PostgreSQL:
 
 ```sql
 -- Enable the extension
+CREATE EXTENSION vector;
 CREATE EXTENSION pg_llm;
 
 -- Verify installation
@@ -181,6 +182,14 @@ SELECT pg_llm_add_model(
 
 ```sql
 SELECT pg_llm_chat('gpt4-chat', 'What is PostgreSQL?');
+```
+
+### Multi-turn Chat
+
+```sql
+SELECT pg_llm_create_session();
+SELECT pg_llm_multi_turn_chat('qianwen-chat', '5PN2qmWqBlQ9wQj99nsQzldVI5ZuGXbE', 'WHO ARE YOU?');
+SELECT pg_llm_multi_turn_chat('qianwen-chat', '5PN2qmWqBlQ9wQj99nsQzldVI5ZuGXbE', 'What was the previous question?');
 ```
 
 ### Parallel Multi-model Chat

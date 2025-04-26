@@ -54,6 +54,7 @@ make install
 
 3. 在 PostgreSQL 中启用扩展：
 ```sql
+CREATE EXTENSION vector;
 CREATE EXTENSION pg_llm;
 ```
 
@@ -74,6 +75,21 @@ SELECT pg_llm_search_vectors(query_vector, 10, 0.7);
 
 -- 对话
 SELECT pg_llm_chat('my_model', '你好，请介绍一下这个数据库');
+
+-- 多轮对话
+-- 1. 创建会话
+SELECT pg_llm_create_session();
+
+-- 2. 使用会话进行对话
+SELECT pg_llm_multi_turn_chat('my_model', 'session_id', '你好，请介绍一下这个数据库');
+SELECT pg_llm_multi_turn_chat('my_model', 'session_id', '那它有什么特点呢？');
+SELECT pg_llm_multi_turn_chat('my_model', 'session_id', '如何安装和配置？');
+
+-- 3. 清理过期会话（可选）
+SELECT pg_llm_cleanup_sessions(3600);
+
+-- 4. 查询所有session信息
+SELECT pg_llm_get_sessions();
 ```
 
 ## 性能调优

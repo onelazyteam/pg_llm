@@ -67,9 +67,9 @@ set(SOURCES
     src/catalog/pg_llm_models.cpp
     src/models/model_manager.cpp
     src/models/llm_interface.cpp
-    src/utils/pg_llm_glog.cpp
     src/text2sql/pg_vector.cpp
     src/text2sql/text2sql.cpp
+    src/utils/pg_llm_glog.cpp
 )
 
 # Create shared library
