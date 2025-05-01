@@ -34,7 +34,7 @@ struct ChatMessage {
 // Structure to hold model response with confidence score
 struct ModelResponse {
   std::string response;
-  float confidence_score;
+  double confidence_score;
   std::string model_name;
 };
 

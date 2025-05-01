@@ -60,9 +60,9 @@ ModelResponse LLMInterface::chat_completion(const std::vector<ChatMessage>& mess
 
   request_body["messages"] = message_arr;
   request_body["stream"] = false;
-  // request_body["parameters"]["temperature"] = 0.7;
-  // request_body["parameters"]["top_p"] = 0.9;
-  // request_body["parameters"]["result_format"] = "text";
+  request_body["parameters"]["temperature"] = 0.6;
+  request_body["parameters"]["top_p"] = 0.9;
+  request_body["parameters"]["logprobs"] = 1;
 
   // Serializing the request body
   Json::StreamWriterBuilder writer_builder;
@@ -87,6 +87,18 @@ ModelResponse LLMInterface::chat_completion(const std::vector<ChatMessage>& mess
       if (reader->parse(contents_tart,
                         contents_tart + response_data.content.size(),
                         &response_json, &parse_errors)) {
+        // get confidence score
+        double confidence = 0;
+        if (response_json.isMember("usage") &&
+            response_json["choices"].isArray() &&
+            !response_json["choices"].empty()) {
+            double total = response_json["usage"]["total_tokens"].asDouble();
+            double output = response_json["usage"]["output_tokens"].asDouble();
+            confidence = (total > 0) ? (output / total) : 0.0;
+            PG_LLM_LOG_INFO("confidence: %lf", confidence);
+        }
+
+        // get question answer
         if (response_json.isMember("choices") &&
             response_json["choices"].isArray() &&
             !response_json["choices"].empty()) {
@@ -97,7 +109,7 @@ ModelResponse LLMInterface::chat_completion(const std::vector<ChatMessage>& mess
             response_data.fullReply = first_choice["message"]["content"].asString();
             PG_LLM_LOG_INFO("Complete reply: %s", response_data.fullReply.c_str());
             // Only return the content field, not the entire JSON response
-            return ModelResponse{response_data.fullReply, 0.9, get_model_name()};
+            return ModelResponse{response_data.fullReply, confidence, get_model_name()};
           }
         } else {
           PG_LLM_LOG_ERROR("Response format exception: missing choices field");
