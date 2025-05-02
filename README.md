@@ -11,7 +11,7 @@ This PostgreSQL extension enables direct integration with various Large Language
 - [x] Importing the log library
 - [ ] Support for streaming responses
 - [x] Session-based multi-turn conversation support
-- [ ] Parallel inference with multiple models
+- [x] Parallel inference with multiple models
 - [ ] Automatically select the model with the highest confidence (select by score), and use the local model as a backup (fall back to the local model when confidence is low)
 - [ ] Sensitive information encryption
 - [ ] Audit logging

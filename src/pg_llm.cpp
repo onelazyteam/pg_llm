@@ -156,34 +156,38 @@ Datum pg_llm_chat(PG_FUNCTION_ARGS) {
 // Parallel chat with multiple models
 Datum pg_llm_parallel_chat(PG_FUNCTION_ARGS) {
   text* prompt_text = PG_GETARG_TEXT_PP(0);
-  ArrayType* model_names_array = PG_GETARG_ARRAYTYPE_P(1);
-
   std::string prompt(VARDATA_ANY(prompt_text), VARSIZE_ANY_EXHDR(prompt_text));
 
-  // Convert PostgreSQL array to vector of strings
-  int num_models = ARR_DIMS(model_names_array)[0];
-  Datum* elements;
-  bool* nulls;
-  int16 typlen;
-  bool typbyval;
-  char typalign;
-
-  get_typlenbyvalalign(ARR_ELEMTYPE(model_names_array), &typlen, &typbyval, &typalign);
-  deconstruct_array(model_names_array,
-                    ARR_ELEMTYPE(model_names_array),
-                    typlen,
-                    typbyval,
-                    typalign,
-                    &elements,
-                    &nulls,
-                    &num_models);
-
   std::vector<std::string> model_names;
-  for (int i = 0; i < num_models; i++) {
-    if (!nulls[i]) {
-      text* model_name_text = (text*) elements[i];
-      model_names.push_back(
-        std::string(VARDATA_ANY(model_name_text), VARSIZE_ANY_EXHDR(model_name_text)));
+
+  if (PG_ARGISNULL(1)) {
+    model_names = pg_llm_get_all_instancenames();
+  } else {
+    ArrayType* model_names_array = PG_GETARG_ARRAYTYPE_P(1);
+    // Convert PostgreSQL array to vector of strings
+    int num_models = ARR_DIMS(model_names_array)[0];
+    Datum* elements;
+    bool* nulls;
+    int16 typlen;
+    bool typbyval;
+    char typalign;
+
+    get_typlenbyvalalign(ARR_ELEMTYPE(model_names_array), &typlen, &typbyval, &typalign);
+    deconstruct_array(model_names_array,
+                      ARR_ELEMTYPE(model_names_array),
+                      typlen,
+                      typbyval,
+                      typalign,
+                      &elements,
+                      &nulls,
+                      &num_models);
+
+    for (int i = 0; i < num_models; i++) {
+      if (!nulls[i]) {
+        text* model_name_text = (text*) elements[i];
+        model_names.push_back(
+          std::string(VARDATA_ANY(model_name_text), VARSIZE_ANY_EXHDR(model_name_text)));
+      }
     }
   }
 

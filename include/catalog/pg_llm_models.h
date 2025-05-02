@@ -31,9 +31,12 @@ void pg_llm_model_delete(char* instance_name);
 }
 
 #include <string>
+#include <vector>
 
 bool pg_llm_model_get_infos(bool *local_model,
                             const std::string instance_name,
                             std::string &model_type,
                             std::string &api_key,
                             std::string &config);
+
+std::vector<std::string> pg_llm_get_all_instancenames();

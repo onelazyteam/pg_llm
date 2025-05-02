@@ -89,7 +89,7 @@ LANGUAGE C STRICT;
 
 CREATE FUNCTION pg_llm_parallel_chat(
   prompt text,
-  model_names text[]
+  model_names text[] DEFAULT '{}'::text[]
 ) RETURNS text
 AS 'MODULE_PATHNAME', 'pg_llm_parallel_chat'
 LANGUAGE C STRICT;

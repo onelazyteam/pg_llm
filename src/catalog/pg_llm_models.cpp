@@ -103,3 +103,36 @@ bool pg_llm_model_get_infos(bool *local_model,
   table_close(rel, AccessShareLock);
   return result;
 }
+
+std::vector<std::string> pg_llm_get_all_instancenames() {
+  Relation    rel;
+  TableScanDesc scan;
+  HeapTuple   tup;
+  TupleDesc   tupdesc;
+  bool        isnull;
+  std::vector<std::string> names;
+
+  initialize_pg_llm_relid();
+
+  rel = table_open(pg_llm_model_relid, AccessShareLock);
+
+  scan = table_beginscan_catalog(rel, 0, NULL);
+
+  tupdesc = RelationGetDescr(rel);
+
+  while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL) {
+    Datum d = heap_getattr(tup,
+                           Anum_pg_llm_instance_name,
+                           tupdesc,
+                           &isnull);
+    if (!isnull) {
+      std::string s = std::string(TextDatumGetCString(d));
+      names.push_back(s);
+    }
+  }
+
+  table_endscan(scan);
+  table_close(rel, AccessShareLock);
+
+  return names;
+}
