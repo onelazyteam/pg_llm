@@ -17,7 +17,7 @@ for file in $FILES; do
 done
 
 if [ $FAIL -ne 0 ]; then
-  echo "�� Commit rejected due to formatting issues. Please run clang-format."
+  echo "Commit rejected due to formatting issues. Please run clang-format."
   exit 1
 fi
 

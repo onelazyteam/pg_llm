@@ -15,7 +15,7 @@ Text2SQL 是一个 PostgreSQL 扩展，用于将自然语言查询转换为 SQL 
 
 2. **数据结构**
    - `TableInfo`: 表结构信息
-   - `VectorSearchResult`: 向量检索结果
+   - `VectorSchemaInfo`: 向量检索元数据结果
    - `Text2SQLConfig`: 配置参数
    - `CacheEntry`: 带时间戳的缓存条目
 

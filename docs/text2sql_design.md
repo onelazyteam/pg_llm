@@ -15,7 +15,7 @@ Text2SQL is a PostgreSQL extension that converts natural language queries into S
 
 2. **Data Structures**
    - `TableInfo`: Table structure information
-   - `VectorSearchResult`: Vector search results
+   - `VectorSchemaInfo`: Vector search schema results
    - `Text2SQLConfig`: Configuration parameters
    - `CacheEntry`: Cache entry with timestamp
 

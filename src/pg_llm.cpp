@@ -455,13 +455,16 @@ Datum pg_llm_text2sql(PG_FUNCTION_ARGS) {
     }
 
     // vector search
-    std::vector<pg_llm::text2sql::VectorSearchResult> search_results;
+    std::vector<pg_llm::text2sql::VectorSchemaInfo> search_schemas;
+    std::vector<std::string> similar_queries;
     if (use_vector_search) {
-      search_results = text2sql.search_vectors(text_to_cstring(prompt));
+      // get similar queries
+      similar_queries = text2sql.get_similar_queries(text_to_cstring(prompt));
+      // search vectors
+      search_schemas = text2sql.search_vectors(text_to_cstring(prompt));
     }
-
     // generate sql
-    std::string sql = text2sql.generate_sql(text_to_cstring(prompt), schema, search_results);
+    std::string sql = text2sql.generate_sql(text_to_cstring(prompt), schema, search_schemas);
 
     // return result
     PG_RETURN_TEXT_P(cstring_to_text(sql.c_str()));

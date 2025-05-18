@@ -96,6 +96,7 @@ public:
 
   // Get text embedding
   std::vector<float> get_embedding(const std::string& text);
+  std::string get_embedding_str(const std::string& text);
 
   inline bool is_streaming() { return is_streaming_; }
 

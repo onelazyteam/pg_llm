@@ -181,23 +181,27 @@ CURLcode LLMInterface::make_api_request(const std::string& endpoint,
   return CURLE_OK;
 }
 
-std::vector<float> LLMInterface::get_embedding(const std::string& text) {
+std::string LLMInterface::get_embedding_str(const std::string& text) {
   if (!is_ready()) {
-    throw std::runtime_error("Model is not initialized");
+    PG_LLM_LOG_ERROR("Model is not initialized");
   }
 
+  std::string embedding_str;
   // Prepare request body
   Json::Value request_body;
   request_body["input"] = text;
-  request_body["model"] = "qwen-embedding";  // Use Qianwen's embedding model
+  request_body["model"] = "text-embedding-v3";
+  request_body["encoding_format"] = "float";
+  request_body["dimension"] = "64";
 
   // Serialize request body
   Json::StreamWriterBuilder writer_builder;
+  writer_builder["indentation"] = "";
   std::string request_body_str = Json::writeString(writer_builder, request_body);
 
   // Make API request
   ResponseData response_data;
-  std::string embedding_endpoint = "https://dashscope.aliyuncs.com/api/v1/embeddings";
+  std::string embedding_endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings";
   CURLcode res = make_api_request(embedding_endpoint, request_body_str, response_data);
 
   if (res != CURLE_OK) {
@@ -207,29 +211,69 @@ std::vector<float> LLMInterface::get_embedding(const std::string& text) {
   // Parse response
   Json::Value response_json;
   Json::CharReaderBuilder reader_builder;
-  std::unique_ptr<Json::CharReader> reader(reader_builder.newCharReader());
-  std::string parse_errors;
+  std::string errs;
+  std::istringstream ss(response_data.content);
+  if (Json::parseFromStream(reader_builder, ss, &response_json, &errs)) {
+    const Json::Value& data = response_json["data"];
+    std::vector<float> embedding;
+    for (const auto& item : data) {
+        const Json::Value& emb = item["embedding"];
+        embedding_str = Json::writeString(writer_builder, emb);
+    }
+    return embedding_str;
+  } else {
+    PG_LLM_LOG_ERROR("JSON parse error:%s", errs.c_str());
+  }
+  PG_LLM_LOG_ERROR("Invalid embedding response format");
+  return std::string();
+}
 
-  if (!reader->parse(response_data.content.c_str(),
-                     response_data.content.c_str() + response_data.content.size(),
-                     &response_json, &parse_errors)) {
-    PG_LLM_LOG_ERROR("Failed to parse embedding response: %s", parse_errors.c_str());
+std::vector<float> LLMInterface::get_embedding(const std::string& text) {
+  if (!is_ready()) {
+    PG_LLM_LOG_ERROR("Model is not initialized");
   }
 
-  // Extract embedding vector
-  if (response_json.isMember("output") &&
-      response_json["output"].isMember("embeddings") &&
-      response_json["output"]["embeddings"].isArray() &&
-      !response_json["output"]["embeddings"].empty()) {
+  // Prepare request body
+  Json::Value request_body;
+  request_body["input"] = text;
+  request_body["model"] = "text-embedding-v3";
+  request_body["encoding_format"] = "float";
+  request_body["dimension"] = "1024";
 
+  // Serialize request body
+  Json::StreamWriterBuilder writer_builder;
+  writer_builder["indentation"] = "";
+  std::string request_body_str = Json::writeString(writer_builder, request_body);
+
+  // Make API request
+  ResponseData response_data;
+  std::string embedding_endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings";
+  CURLcode res = make_api_request(embedding_endpoint, request_body_str, response_data);
+
+  if (res != CURLE_OK) {
+    PG_LLM_LOG_ERROR("Failed to get embedding: %s", curl_easy_strerror(res));
+  }
+
+  // Parse response
+  Json::Value response_json;
+  Json::CharReaderBuilder reader_builder;
+  std::string errs;
+  std::istringstream ss(response_data.content);
+  if (Json::parseFromStream(reader_builder, ss, &response_json, &errs)) {
+    const Json::Value& data = response_json["data"];
     std::vector<float> embedding;
-    const Json::Value& embeddings = response_json["output"]["embeddings"][0];
-    for (const auto& value : embeddings) {
-      embedding.push_back(value.asFloat());
+    for (const auto& item : data) {
+        const Json::Value& emb = item["embedding"];
+        for (Json::ArrayIndex i = 0; i < emb.size(); ++i) {
+          embedding.push_back(emb[i].asFloat());
+        }
+        // std::string emb_str = Json::writeString(writer_builder, emb);
+        // std::cout << emb_str << std::endl;
     }
     return embedding;
+  } else {
+    PG_LLM_LOG_ERROR("JSON parse error:%s", errs.c_str());
   }
-
   PG_LLM_LOG_ERROR("Invalid embedding response format");
   return std::vector<float>();
 }

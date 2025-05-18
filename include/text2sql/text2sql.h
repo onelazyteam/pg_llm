@@ -20,8 +20,7 @@ struct TableInfo {
   std::string description;
 };
 
-// Vector search result
-struct VectorSearchResult {
+struct VectorSchemaInfo {
   std::string table_name;
   std::string column_name;
   int64_t row_id;
@@ -70,7 +69,7 @@ struct Text2SQLConfig {
   float similarity_threshold = 0.7;
   int max_tokens = 4000;  // Maximum token limit
   bool include_sample_data = true;  // Whether to include sample data
-  int sample_data_limit = 3;  // Sample data row limit
+  int sample_data_limit = 5;  // Sample data row limit
   
   // Performance settings
   bool enable_cache = true;  // Enable caching
@@ -93,12 +92,14 @@ public:
   std::string get_table_sample_data(const std::string& table_name);
   
   // Vector search
-  std::vector<VectorSearchResult> search_vectors(const std::string& query);
+  std::vector<VectorSchemaInfo> search_vectors(const std::string& query);
+  std::vector<std::string> get_similar_queries(const std::string& query);
   
   // Generate SQL
   std::string generate_sql(const std::string& query, 
                          const std::vector<TableInfo>& schema,
-                         const std::vector<VectorSearchResult>& search_results = {});
+                         const std::vector<VectorSchemaInfo>& search_results = {},
+                         const std::vector<std::string>& similar_results = {});
 
   QueryAnalyzer analyze_query(const std::string& sql);
 
@@ -112,7 +113,8 @@ private:
   // Build prompt
   std::string build_prompt(const std::string& query,
                          const std::vector<TableInfo>& schema,
-                         const std::vector<VectorSearchResult>& search_results);
+                         const std::vector<VectorSchemaInfo>& search_results,
+                         const std::vector<std::string>& similar_results);
   
   std::string execute_and_format_sql(const std::string& sql);
   
@@ -129,10 +131,10 @@ private:
   void cleanup_cache();
   
   // Parallel processing
-  std::vector<VectorSearchResult> parallel_search(const std::string& query);
+  std::vector<VectorSchemaInfo> parallel_search(const std::string& query);
   
   // Batch processing
-  std::vector<VectorSearchResult> batch_search(const std::vector<float>& embedding);
+  std::vector<VectorSchemaInfo> batch_search(const std::vector<float>& embedding);
 
   std::shared_ptr<LLMInterface> model_;
   Text2SQLConfig config_;
@@ -140,7 +142,7 @@ private:
   // Cache storage
   std::unordered_map<std::string, CacheEntry<std::vector<TableInfo>>> schema_cache_;
   std::unordered_map<std::string, CacheEntry<std::string>> sample_data_cache_;
-  std::unordered_map<std::string, CacheEntry<std::vector<VectorSearchResult>>> vector_cache_;
+  std::unordered_map<std::string, CacheEntry<std::vector<VectorSchemaInfo>>> vector_cache_;
   std::unordered_map<std::string, CacheEntry<std::string>> sql_cache_;
   
   // Mutex for thread safety

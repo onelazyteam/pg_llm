@@ -117,6 +117,12 @@ SELECT pg_llm_chat('qianwen-chat', 'Who are you?');
 SELECT pg_llm_text2sql('qianwen-chat', 'Create a user table.', NULL, false);
 SELECT pg_llm_text2sql('qianwen-chat', 'Insert 10 rows of random data into the user table.', NULL, false);
 SELECT pg_llm_text2sql('qianwen-chat', 'Query the user table.', NULL, false);
+-- use vector search
+-- When you plan to use vector to improve text2sql accuracy, you need to first let LLM write "simulated questions" for each field:
+-- imagine how users might ask about this field, generate a set of high-quality and accurate NL-SQL pairs,
+-- and insert them into _pg_llm_catalog.pg_llm_queries for querying when executing text2sql.
+-- The plugin has provided an embedding function pg_llm_get_embedding, which can be used to normalize the text
+SELECT pg_llm_text2sql('qianwen-chat', 'Query the user table.', NULL, true);
 ```
 
 
@@ -125,7 +131,7 @@ SELECT pg_llm_text2sql('qianwen-chat', 'Query the user table.', NULL, false);
 
 ```sql
 SELECT pg_llm_create_session();
-SELECT pg_llm_multi_turn_chat('qianwen-chat', '5PN2qmWqBlQ9wQj99nsQzldVI5ZuGXbE', 'who are you?')
+SELECT pg_llm_multi_turn_chat('qianwen-chat', '5PN2qmWqBlQ9wQj99nsQzldVI5ZuGXbE', 'Who are you?')
 SELECT pg_llm_multi_turn_chat('qianwen-chat', '5PN2qmWqBlQ9wQj99nsQzldVI5ZuGXbE', 'What was the previous question?');
 ```
 

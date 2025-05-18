@@ -33,7 +33,7 @@ bool Text2SQL::get_from_cache(const std::string& key, T& value) {
   } else if constexpr (std::is_same_v<T, std::string>) {
     cache = &sample_data_cache_;
     mutex = &sample_data_cache_mutex_;
-  } else if constexpr (std::is_same_v<T, std::vector<VectorSearchResult>>) {
+  } else if constexpr (std::is_same_v<T, std::vector<VectorSchemaInfo>>) {
     cache = &vector_cache_;
     mutex = &vector_cache_mutex_;
   } else {
@@ -68,7 +68,7 @@ void Text2SQL::set_cache(const std::string& key, const T& value) {
   } else if constexpr (std::is_same_v<T, std::string>) {
     cache = &sample_data_cache_;
     mutex = &sample_data_cache_mutex_;
-  } else if constexpr (std::is_same_v<T, std::vector<VectorSearchResult>>) {
+  } else if constexpr (std::is_same_v<T, std::vector<VectorSchemaInfo>>) {
     cache = &vector_cache_;
     mutex = &vector_cache_mutex_;
   } else {
@@ -108,7 +108,7 @@ void Text2SQL::cleanup_cache() {
 }
 
 // Parallel search implementation
-std::vector<VectorSearchResult> Text2SQL::parallel_search(const std::string& query) {
+std::vector<VectorSchemaInfo> Text2SQL::parallel_search(const std::string& query) {
   if (!config_.parallel_processing) {
     return search_vectors(query);
   }
@@ -117,8 +117,8 @@ std::vector<VectorSearchResult> Text2SQL::parallel_search(const std::string& que
   return batch_search(embedding);
 }
 
-std::vector<VectorSearchResult> Text2SQL::batch_search(const std::vector<float>& embedding) {
-  std::vector<VectorSearchResult> results;
+std::vector<VectorSchemaInfo> Text2SQL::batch_search(const std::vector<float>& embedding) {
+  std::vector<VectorSchemaInfo> results;
   Datum embedding_datum = std_vector_to_vector(embedding);
 
   SPI_connect();
@@ -156,7 +156,7 @@ std::vector<VectorSearchResult> Text2SQL::batch_search(const std::vector<float>&
   }
 
   for (uint64 i = 0; i < SPI_processed; i++) {
-    VectorSearchResult result;
+    VectorSchemaInfo result;
     bool isnull;
     result.table_name = SPI_getvalue(tuptable->vals[i], tuptable->tupdesc, 1);
     result.column_name = SPI_getvalue(tuptable->vals[i], tuptable->tupdesc, 2);
@@ -262,7 +262,57 @@ std::string Text2SQL::get_table_sample_data(const std::string& table_name) {
   return result;
 }
 
-std::vector<VectorSearchResult> Text2SQL::search_vectors(const std::string& query) {
+std::vector<std::string> Text2SQL::get_similar_queries(const std::string& query) {
+  if (!config_.use_vector_search) {
+    return {};
+  }
+
+  auto embedding = model_->get_embedding(query);
+  Datum embedding_datum = std_vector_to_vector(embedding);
+
+  SPI_connect();
+  char sql[1024];
+  snprintf(sql,
+           sizeof(sql),
+           "SELECT nl_sql_pair FROM _pg_llm_catalog.pg_llm_queries "
+           "WHERE 1 - (question <=> $1) >= $2 "
+           "ORDER BY question <=> $1 "
+           "LIMIT $3");
+
+  Oid argtypes[3] = {get_vector_type_oid(), FLOAT4OID, INT4OID};
+  Datum values[3] = {embedding_datum,
+                     Float4GetDatum(config_.similarity_threshold),
+                     Int32GetDatum(config_.sample_data_limit)
+                    };
+  char nulls[3] = {' ', ' ', ' '};
+
+  SPIPlanPtr plan = SPI_prepare(sql, 3, argtypes);
+  if (plan == NULL) {
+    SPI_finish();
+    return {};
+  }
+
+  int ret = SPI_execute_plan(plan, values, nulls, true, 1);
+  if (ret != SPI_OK_SELECT) {
+    elog(ERROR, "SPI_execute_plan failed: %s", SPI_result_code_string(ret));
+  }
+  SPITupleTable* tuptable = SPI_tuptable;
+  if (tuptable == NULL) {
+    SPI_finish();
+    return {};
+  }
+
+  std::vector<std::string> results;
+  for (uint64 i = 0; i < SPI_processed; i++) {
+    char* query_str = SPI_getvalue(tuptable->vals[i], tuptable->tupdesc, 1);
+    results.push_back(query_str ? query_str : "");
+  }
+
+  SPI_finish();
+  return results;
+}
+
+std::vector<VectorSchemaInfo> Text2SQL::search_vectors(const std::string& query) {
   if (!config_.use_vector_search) {
     return {};
   }
@@ -275,10 +325,10 @@ std::vector<VectorSearchResult> Text2SQL::search_vectors(const std::string& quer
   snprintf(sql,
            sizeof(sql),
            "SELECT table_name, column_name, row_id, "
-           "1 - (vector <=> $1) as similarity, metadata "
+           "1 - (query_vector <=> $1) as similarity, metadata "
            "FROM _pg_llm_catalog.pg_llm_vectors "
-           "WHERE 1 - (vector <=> $1) >= $2 "
-           "ORDER BY vector <=> $1 "
+           "WHERE 1 - (query_vector <=> $1) >= $2 "
+           "ORDER BY query_vector <=> $1 "
            "LIMIT $3");
 
   Oid argtypes[3] = {get_vector_type_oid(), FLOAT4OID, INT4OID};
@@ -304,9 +354,9 @@ std::vector<VectorSearchResult> Text2SQL::search_vectors(const std::string& quer
     return {};
   }
 
-  std::vector<VectorSearchResult> results;
+  std::vector<VectorSchemaInfo> results;
   for (uint64 i = 0; i < SPI_processed; i++) {
-    VectorSearchResult result;
+    VectorSchemaInfo result;
     bool isnull;
     result.table_name = SPI_getvalue(tuptable->vals[i], tuptable->tupdesc, 1);
     result.column_name = SPI_getvalue(tuptable->vals[i], tuptable->tupdesc, 2);
@@ -399,26 +449,26 @@ std::string Text2SQL::generate_query_suggestions(const std::string& sql) {
 // Modify build_prompt function to support more SQL types
 std::string Text2SQL::build_prompt(const std::string& query,
                                    const std::vector<TableInfo>& schema,
-                                   const std::vector<VectorSearchResult>& search_results) {
+                                   const std::vector<VectorSchemaInfo>& search_results,
+                                   const std::vector<std::string>& similar_results) {
     std::string prompt = "You are a professional PostgreSQL database engineer. Your task is to convert natural language queries into accurate SQL statements.\n\n"
                        "Important Rules:\n"
                        "1. Generate SQL in a SINGLE LINE, no line breaks\n"
                        "2. Use ONLY columns that exist in the table\n"
-                       "3. Do NOT add WHERE conditions unless explicitly requested\n"
-                       "4. Do NOT add IS NOT NULL conditions unless explicitly requested\n"
-                       "5. Do NOT add any line breaks or indentation\n"
-                       "6. Use proper PostgreSQL syntax and functions\n"
-                       "7. Include GROUP BY clauses only when using aggregate functions\n"
-                       "8. Include ORDER BY clauses only when sorting is requested\n"
-                       "9. Use proper data type casting when needed\n"
-                       "10. Include LIMIT clauses only when explicitly requested\n"
-                       "11. Use subqueries only when necessary\n"
-                       "12. Handle date/time operations correctly\n"
-                       "13. Use proper string operations and pattern matching\n"
-                       "14. Consider query performance implications\n"
-                       "15. SQL statements MUST end with a semicolon (;)\n"
-                       "16. Support DDL statements (CREATE, ALTER, DROP, etc.)\n"
-                       "17. Support transaction control (BEGIN, COMMIT, ROLLBACK)\n\n";
+                       "3. Do NOT add IS NOT NULL conditions unless explicitly requested\n"
+                       "4. Do NOT add any line breaks or indentation\n"
+                       "5. Use proper PostgreSQL syntax and functions\n"
+                       "6. Include GROUP BY clauses only when using aggregate functions\n"
+                       "7. Include ORDER BY clauses only when sorting is requested\n"
+                       "8. Use proper data type casting when needed\n"
+                       "9. Include LIMIT clauses only when explicitly requested\n"
+                       "10. Use subqueries only when necessary\n"
+                       "11. Handle date/time operations correctly\n"
+                       "12. Use proper string operations and pattern matching\n"
+                       "13. Consider query performance implications\n"
+                       "14. SQL statements MUST end with a semicolon (;)\n"
+                       "15. Support DDL statements (CREATE, ALTER, DROP, etc.)\n"
+                       "16. Support transaction control (BEGIN, COMMIT, ROLLBACK)\n\n";
 
     // Add database schema information
     prompt += "DATABASE SCHEMA:\n";
@@ -439,7 +489,7 @@ std::string Text2SQL::build_prompt(const std::string& query,
         }
     }
 
-    // Add vector search results for context
+    // Add vector search schema results for context
     if (!search_results.empty()) {
         prompt += "\nRELEVANT DATA CONTEXT:\n";
         for (const auto& result : search_results) {
@@ -454,25 +504,20 @@ std::string Text2SQL::build_prompt(const std::string& query,
         }
     }
 
+    // Add similar queries for context
+    if (!similar_results.empty()) {
+        prompt += "\nSIMILAR QUERIES:\n";
+        for (const auto& similar_query : similar_results) {
+            prompt += "- " + similar_query + "\n";
+        }
+        prompt += "\n";
+    }
+
     // Add query context and requirements
     prompt += "\nQUERY REQUIREMENTS:\n";
-    prompt += "1. Natural Language Query: " + query + "\n";
+    prompt += "1. Current Natural Language Query: " + query + "\n";
     prompt += "2. Required Output Format: PostgreSQL SQL query in a SINGLE LINE ending with semicolon\n";
-    prompt += "3. Only use columns that exist in the table\n";
-    prompt += "4. Do not add unnecessary WHERE conditions\n";
-    prompt += "5. Do not add IS NOT NULL conditions unless explicitly requested\n\n";
-
-    // Add SQL best practices
-    prompt += "SQL BEST PRACTICES:\n";
-    prompt += "1. Generate SQL in a SINGLE LINE with no line breaks\n";
-    prompt += "2. Use explicit column names instead of SELECT *\n";
-    prompt += "3. Only include necessary columns in the SELECT clause\n";
-    prompt += "4. Only add WHERE conditions when explicitly requested\n";
-    prompt += "5. Use proper data type casting\n";
-    prompt += "6. Consider query performance\n";
-    prompt += "7. Always end SQL statements with a semicolon\n\n";
-
-    prompt += "GENERATE SQL QUERY (MUST BE IN A SINGLE LINE AND END WITH SEMICOLON):";
+    prompt += "3. Need to refer to schema information and similar queries information";
     return prompt;
 }
 
@@ -778,10 +823,11 @@ std::string Text2SQL::validate_and_optimize_sql(const std::string& sql) {
 // Remove retry mechanism and simplify SQL generation
 std::string Text2SQL::generate_sql(const std::string& query,
                                    const std::vector<TableInfo>& schema,
-                                   const std::vector<VectorSearchResult>& search_results) {
+                                   const std::vector<VectorSchemaInfo>& search_results,
+                                   const std::vector<std::string>& similar_results) {
     try {
         // Build prompt and generate SQL
-        std::string prompt = build_prompt(query, schema, search_results);
+        std::string prompt = build_prompt(query, schema, search_results, similar_results);
         auto response = model_->chat_completion(prompt);
         std::string sql = extract_sql(response.response);
         
