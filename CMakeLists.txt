@@ -64,7 +64,6 @@ set(SOURCES
     src/models/llm_interface.cpp
     src/text2sql/pg_vector.cpp
     src/text2sql/text2sql.cpp
-    src/utils/pg_llm_glog.cpp
     src/utils/pg_llm_support.cpp
 )
 

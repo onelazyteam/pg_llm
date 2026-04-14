@@ -44,5 +44,5 @@ Regression SQL tests are kept under `test/sql` and can be executed with `install
 - [ARCHITECTURE.zh.md](ARCHITECTURE.zh.md): 中文架构说明
 - [text2sql_design.md](text2sql_design.md): Text2SQL pipeline and API contract
 - [text2sql_design.zh.md](text2sql_design.zh.md): 中文 Text2SQL 设计
-- [glog_integration.md](glog_integration.md): logging compatibility layer and migration notes
-- [glog_integration.zh.md](glog_integration.zh.md): 中文日志兼容层说明
+- [logging.md](logging.md): PostgreSQL-native logging design
+- [logging.zh.md](logging.zh.md): 中文日志设计说明

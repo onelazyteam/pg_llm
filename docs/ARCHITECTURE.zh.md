@@ -43,7 +43,7 @@
 - JSON/UUID 辅助函数
 - AES-GCM 加解密
 - 敏感字段脱敏
-- 基于 PostgreSQL 的日志兼容封装
+- 基于 PostgreSQL 的原生日志宏（`elog`）
 
 ## 3. Catalog 持久化模型
 

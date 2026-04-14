@@ -84,7 +84,7 @@ void _PG_fini(void);
 #include "models/model_manager.h"
 #include "text2sql/pg_vector.h"
 #include "text2sql/text2sql.h"
-#include "utils/pg_llm_glog.h"
+#include "utils/pg_llm_log.h"
 #include "utils/pg_llm_support.h"
 
 #include <algorithm>
@@ -1058,15 +1058,12 @@ std::vector<std::string> array_to_strings(ArrayType* array) {
 }  // namespace
 
 void _PG_init(void) {
-  pg_llm_glog_init_guc();
   pg_llm_define_core_gucs();
-  pg_llm_glog_init();
   PG_LLM_LOG_INFO("pg_llm extension loaded");
 }
 
 void _PG_fini(void) {
   PG_LLM_LOG_INFO("pg_llm extension unloaded");
-  pg_llm_glog_shutdown();
 }
 
 Datum pg_llm_add_model(PG_FUNCTION_ARGS) {

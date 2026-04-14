@@ -6,7 +6,6 @@ extern "C" {
 #include "utils/json.h"
 #include "utils/jsonb.h"
 #include "utils/lsyscache.h"
-#include "utils/pg_llm_glog.h"
 }
 
 #include <thread>

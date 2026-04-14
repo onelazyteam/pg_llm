@@ -43,7 +43,7 @@ Main responsibilities:
 - JSON/UUID helpers
 - AES-GCM encryption and decryption for secrets
 - Redaction utilities for audit/trace metadata
-- PostgreSQL-native logging wrapper with glog-compatible GUCs
+- PostgreSQL-native logging macros (`elog`)
 
 ## 3. Persistent Catalog Model
 

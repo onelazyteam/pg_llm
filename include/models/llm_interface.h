@@ -21,7 +21,7 @@
 #include <openssl/sha.h>
 #include <openssl/types.h>
 
-#include "utils/pg_llm_glog.h"
+#include "utils/pg_llm_log.h"
 
 namespace pg_llm {
 
