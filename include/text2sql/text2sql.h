@@ -96,6 +96,11 @@ public:
   std::vector<std::string> get_similar_queries(const std::string& query);
   
   // Generate SQL
+  std::string generate_statement(const std::string& query,
+                         const std::vector<TableInfo>& schema,
+                         const std::vector<VectorSchemaInfo>& search_results = {},
+                         const std::vector<std::string>& similar_results = {});
+
   std::string generate_sql(const std::string& query, 
                          const std::vector<TableInfo>& schema,
                          const std::vector<VectorSchemaInfo>& search_results = {},

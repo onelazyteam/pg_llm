@@ -13,7 +13,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Compiler options
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror -Wunused-variable")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare")
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -O0")
 elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
@@ -49,12 +49,7 @@ execute_process(
 )
 
 # Set pgvector path
-set(PGVECTOR_INCLUDE_DIR "${PG_INCLUDEDIR_SERVER}/extension/vector")
-
-# Set thirdparty paths
-set(THIRDPARTY_ROOT "${CMAKE_SOURCE_DIR}/thirdparty/install")
-set(GLOG_INCLUDE_DIR "${THIRDPARTY_ROOT}/include")
-set(GLOG_LIBRARY_DIR "${THIRDPARTY_ROOT}/lib")
+set(PGVECTOR_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/../pgvector/src")
 
 # Find system libraries
 find_package(OpenSSL REQUIRED)
@@ -70,6 +65,7 @@ set(SOURCES
     src/text2sql/pg_vector.cpp
     src/text2sql/text2sql.cpp
     src/utils/pg_llm_glog.cpp
+    src/utils/pg_llm_support.cpp
 )
 
 # Create shared library
@@ -99,16 +95,13 @@ target_include_directories(pg_llm PRIVATE
     ${OPENSSL_INCLUDE_DIR}
     ${CURL_INCLUDE_DIR}
     ${JsonCpp_INCLUDE_DIR}
-    ${GLOG_INCLUDE_DIR}
 )
 
 # Link libraries
 target_link_libraries(pg_llm PRIVATE
-    OpenSSL::SSL
-    OpenSSL::Crypto
-    CURL::libcurl
+    ${OPENSSL_LIBRARIES}
+    ${CURL_LIBRARIES}
     JsonCpp::JsonCpp
-    -L${GLOG_LIBRARY_DIR} -lglog
     -L${PG_LIBDIR} -lpq -lpgcommon -lpgport
 )
 

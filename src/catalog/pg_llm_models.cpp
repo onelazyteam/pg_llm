@@ -1,138 +1,149 @@
 #include "catalog/pg_llm_models.h"
 
-#include <string>
+extern "C" {
+#include "executor/spi.h"
+#include "utils/builtins.h"
+}
 
-static Oid pg_llm_model_relid = InvalidOid;
+namespace {
 
-static inline void initialize_pg_llm_relid() {
-  if (unlikely(!OidIsValid(pg_llm_model_relid))) {
-    pg_llm_model_relid = get_relname_relid(
-                           "pg_llm_models", get_namespace_oid("_pg_llm_catalog", false));
+void ensure_spi_ok(int code, int expected, const char* message) {
+  if (code != expected) {
+    ereport(ERROR,
+            (errcode(ERRCODE_INTERNAL_ERROR),
+             errmsg("%s: %s", message, SPI_result_code_string(code))));
   }
 }
 
-void pg_llm_model_insert(bool local_model, char *model_type, char *instance_name, char *api_key, char *config) {
-  initialize_pg_llm_relid();
-  Relation rel = table_open(pg_llm_model_relid, RowExclusiveLock);
-
-  TupleDesc tupdesc = RelationGetDescr(rel);
-
-  /* Prepare arrays for values and null flags */
-  Datum    values[Natts_pg_llm_models];
-  bool     nulls[Natts_pg_llm_models] = {false, false, false, false, false};
-
-  values[0] = BoolGetDatum(local_model);
-  values[1] = CStringGetTextDatum(model_type);
-  values[2] = CStringGetTextDatum(instance_name);
-  values[3] = CStringGetTextDatum(api_key);
-  values[4] = CStringGetTextDatum(config);
-
-  tupdesc = RelationGetDescr(rel);
-  HeapTuple tuple = heap_form_tuple(tupdesc, values, nulls);
-
-  CatalogTupleInsert(rel, tuple);
-
-  heap_freetuple(tuple);
-  table_close(rel, RowExclusiveLock);
+Datum text_datum(const std::string& value) {
+  return CStringGetTextDatum(value.c_str());
 }
 
-void pg_llm_model_delete(char *instance_name) {
-  initialize_pg_llm_relid();
+}  // namespace
 
-  Relation rel = table_open(pg_llm_model_relid, RowExclusiveLock);
-  Snapshot snapshot = GetTransactionSnapshot();
-  TableScanDesc scan = table_beginscan(rel, snapshot, 0, NULL);
-  HeapTuple  tup;
-  while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL) {
-    Datum dname;
-    bool isnull;
-    char *cname;
+void pg_llm_model_insert(const PgLlmModelInfo& info) {
+  SPI_connect();
 
-    /* Extract instance_name column (second column, attnum = 2) */
-    dname = heap_getattr(tup, Anum_pg_llm_instance_name, RelationGetDescr(rel), &isnull);
-    if (!isnull) {
-      cname = TextDatumGetCString(dname);
-      if (strcmp(cname, instance_name) == 0) {
-        simple_heap_delete(rel, &tup->t_self);
-      }
-    }
+  const char* sql =
+    "INSERT INTO _pg_llm_catalog.pg_llm_models ("
+    "local_model, model_type, instance_name, api_key, config, "
+    "encrypted_api_key, encrypted_config, confidence_threshold, "
+    "fallback_instance, is_local_fallback, capabilities) "
+    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb) "
+    "ON CONFLICT (instance_name) DO UPDATE SET "
+    "local_model = EXCLUDED.local_model, "
+    "model_type = EXCLUDED.model_type, "
+    "api_key = EXCLUDED.api_key, "
+    "config = EXCLUDED.config, "
+    "encrypted_api_key = EXCLUDED.encrypted_api_key, "
+    "encrypted_config = EXCLUDED.encrypted_config, "
+    "confidence_threshold = EXCLUDED.confidence_threshold, "
+    "fallback_instance = EXCLUDED.fallback_instance, "
+    "is_local_fallback = EXCLUDED.is_local_fallback, "
+    "capabilities = EXCLUDED.capabilities, "
+    "updated_at = CURRENT_TIMESTAMP";
+
+  Oid argtypes[11] = {
+    BOOLOID, TEXTOID, TEXTOID, TEXTOID, TEXTOID, TEXTOID, TEXTOID, FLOAT8OID, TEXTOID, BOOLOID, TEXTOID};
+  Datum values[11] = {
+    BoolGetDatum(info.local_model),
+    text_datum(info.model_type),
+    text_datum(info.instance_name),
+    text_datum(info.api_key),
+    text_datum(info.config),
+    text_datum(info.encrypted_api_key),
+    text_datum(info.encrypted_config),
+    Float8GetDatum(info.confidence_threshold),
+    text_datum(info.fallback_instance),
+    BoolGetDatum(info.is_local_fallback),
+    text_datum(info.capabilities_json.empty() ? "{}" : info.capabilities_json)};
+  char nulls[11] = {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '};
+
+  int ret = SPI_execute_with_args(sql, 11, argtypes, values, nulls, false, 0);
+  ensure_spi_ok(ret, SPI_OK_INSERT, "failed to upsert model metadata");
+  SPI_finish();
+}
+
+bool pg_llm_model_delete(const std::string& instance_name) {
+  SPI_connect();
+  const char* sql = "DELETE FROM _pg_llm_catalog.pg_llm_models WHERE instance_name = $1";
+  Oid argtypes[1] = {TEXTOID};
+  Datum values[1] = {text_datum(instance_name)};
+  char nulls[1] = {' '};
+  int ret = SPI_execute_with_args(sql, 1, argtypes, values, nulls, false, 0);
+  ensure_spi_ok(ret, SPI_OK_DELETE, "failed to delete model metadata");
+  uint64 affected = SPI_processed;
+  SPI_finish();
+  return affected > 0;
+}
+
+bool pg_llm_model_get_info(const std::string& instance_name, PgLlmModelInfo* info) {
+  SPI_connect();
+  const char* sql =
+    "SELECT local_model, model_type, instance_name, "
+    "COALESCE(api_key, ''), COALESCE(config, ''), "
+    "COALESCE(encrypted_api_key, ''), COALESCE(encrypted_config, ''), "
+    "COALESCE(confidence_threshold, 0.0), COALESCE(fallback_instance, ''), "
+    "COALESCE(is_local_fallback, false), COALESCE(capabilities::text, '{}') "
+    "FROM _pg_llm_catalog.pg_llm_models WHERE instance_name = $1";
+
+  Oid argtypes[1] = {TEXTOID};
+  Datum values[1] = {text_datum(instance_name)};
+  char nulls[1] = {' '};
+  int ret = SPI_execute_with_args(sql, 1, argtypes, values, nulls, true, 1);
+  ensure_spi_ok(ret, SPI_OK_SELECT, "failed to fetch model metadata");
+  if (SPI_processed == 0) {
+    SPI_finish();
+    return false;
   }
 
-  /* End scan and close relation */
-  heap_endscan(scan);
-  table_close(rel, RowExclusiveLock);
+  bool isnull = false;
+  HeapTuple tuple = SPI_tuptable->vals[0];
+  TupleDesc tupdesc = SPI_tuptable->tupdesc;
+  info->local_model = DatumGetBool(SPI_getbinval(tuple, tupdesc, 1, &isnull));
+  info->model_type = SPI_getvalue(tuple, tupdesc, 2);
+  info->instance_name = SPI_getvalue(tuple, tupdesc, 3);
+  info->api_key = SPI_getvalue(tuple, tupdesc, 4);
+  info->config = SPI_getvalue(tuple, tupdesc, 5);
+  info->encrypted_api_key = SPI_getvalue(tuple, tupdesc, 6);
+  info->encrypted_config = SPI_getvalue(tuple, tupdesc, 7);
+  info->confidence_threshold = DatumGetFloat8(SPI_getbinval(tuple, tupdesc, 8, &isnull));
+  info->fallback_instance = SPI_getvalue(tuple, tupdesc, 9);
+  info->is_local_fallback = DatumGetBool(SPI_getbinval(tuple, tupdesc, 10, &isnull));
+  info->capabilities_json = SPI_getvalue(tuple, tupdesc, 11);
+  SPI_finish();
+  return true;
 }
 
-bool pg_llm_model_get_infos(bool *local_model,
+bool pg_llm_model_get_infos(bool* local_model,
                             const std::string instance_name,
-                            std::string &model_type,
-                            std::string &api_key,
-                            std::string &config) {
-  bool result = false;
-  initialize_pg_llm_relid();
-
-  Relation rel = table_open(pg_llm_model_relid, AccessShareLock);
-
-  ScanKeyData scankey;
-  ScanKeyInit(&scankey, Anum_pg_llm_instance_name, BTEqualStrategyNumber,
-              F_TEXTEQ, CStringGetTextDatum(instance_name.c_str()));
-  Snapshot snapshot = GetTransactionSnapshot();
-  TableScanDesc scan = table_beginscan_strat(rel, snapshot, 1, &scankey, true, true);
-
-  HeapTuple  tup;
-  while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL) {
-    Datum dname;
-    bool isnull;
-    /* Extract instance_name column (second column, attnum = 2) */
-    dname = heap_getattr(tup, Anum_pg_llm_instance_name, RelationGetDescr(rel), &isnull);
-    if (!isnull) {
-      dname = heap_getattr(tup, Anum_pg_llm_local_model, RelationGetDescr(rel), &isnull);
-      *local_model = DatumGetBool(dname);
-      dname = heap_getattr(tup, Anum_pg_llm_model_type, RelationGetDescr(rel), &isnull);
-      model_type = std::string(TextDatumGetCString(dname));
-      dname = heap_getattr(tup, Anum_pg_llm_api_key, RelationGetDescr(rel), &isnull);
-      api_key = std::string(TextDatumGetCString(dname));
-      dname = heap_getattr(tup, Anum_pg_llm_config, RelationGetDescr(rel), &isnull);
-      config = std::string(TextDatumGetCString(dname));
-      result = true;
-    }
+                            std::string& model_type,
+                            std::string& api_key,
+                            std::string& config) {
+  PgLlmModelInfo info;
+  if (!pg_llm_model_get_info(instance_name, &info)) {
+    return false;
   }
 
-  /* End scan and close relation */
-  heap_endscan(scan);
-  table_close(rel, AccessShareLock);
-  return result;
+  *local_model = info.local_model;
+  model_type = info.model_type;
+  api_key = info.api_key;
+  config = info.config;
+  return true;
 }
 
 std::vector<std::string> pg_llm_get_all_instancenames() {
-  Relation    rel;
-  TableScanDesc scan;
-  HeapTuple   tup;
-  TupleDesc   tupdesc;
-  bool        isnull;
+  SPI_connect();
+  const char* sql =
+    "SELECT instance_name FROM _pg_llm_catalog.pg_llm_models ORDER BY instance_name";
+  int ret = SPI_execute(sql, true, 0);
+  ensure_spi_ok(ret, SPI_OK_SELECT, "failed to list model instances");
+
   std::vector<std::string> names;
-
-  initialize_pg_llm_relid();
-
-  rel = table_open(pg_llm_model_relid, AccessShareLock);
-
-  scan = table_beginscan_catalog(rel, 0, NULL);
-
-  tupdesc = RelationGetDescr(rel);
-
-  while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL) {
-    Datum d = heap_getattr(tup,
-                           Anum_pg_llm_instance_name,
-                           tupdesc,
-                           &isnull);
-    if (!isnull) {
-      std::string s = std::string(TextDatumGetCString(d));
-      names.push_back(s);
-    }
+  for (uint64 i = 0; i < SPI_processed; ++i) {
+    names.emplace_back(SPI_getvalue(SPI_tuptable->vals[i], SPI_tuptable->tupdesc, 1));
   }
 
-  table_endscan(scan);
-  table_close(rel, AccessShareLock);
-
+  SPI_finish();
   return names;
 }

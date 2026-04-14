@@ -252,7 +252,7 @@ std::string Text2SQL::get_table_sample_data(const std::string& table_name) {
     result += "Row " + std::to_string(i + 1) + ": ";
     for (int j = 0; j < SPI_tuptable->tupdesc->natts; j++) {
       char* value = SPI_getvalue(SPI_tuptable->vals[i], SPI_tuptable->tupdesc, j + 1);
-      result += std::string(SPI_tuptable->tupdesc->attrs[j].attname.data) +
+      result += std::string(NameStr(TupleDescAttr(SPI_tuptable->tupdesc, j)->attname)) +
                 "=" + (value ? value : "NULL") + " ";
     }
     result += "\n";
@@ -574,7 +574,7 @@ static inline std::string format_query_results(SPITupleTable* result_tuptable) {
         std::vector<std::string> headers;
         std::vector<size_t> col_widths;
         for (int j = 0; j < result_tuptable->tupdesc->natts; j++) {
-            headers.push_back(result_tuptable->tupdesc->attrs[j].attname.data);
+            headers.push_back(NameStr(TupleDescAttr(result_tuptable->tupdesc, j)->attname));
             col_widths.push_back(headers[j].length());
         }
 
@@ -820,16 +820,22 @@ std::string Text2SQL::validate_and_optimize_sql(const std::string& sql) {
     return result;
 }
 
+std::string Text2SQL::generate_statement(const std::string& query,
+                                         const std::vector<TableInfo>& schema,
+                                         const std::vector<VectorSchemaInfo>& search_results,
+                                         const std::vector<std::string>& similar_results) {
+    std::string prompt = build_prompt(query, schema, search_results, similar_results);
+    auto response = model_->chat_completion(prompt);
+    return extract_sql(response.response);
+}
+
 // Remove retry mechanism and simplify SQL generation
 std::string Text2SQL::generate_sql(const std::string& query,
                                    const std::vector<TableInfo>& schema,
                                    const std::vector<VectorSchemaInfo>& search_results,
                                    const std::vector<std::string>& similar_results) {
     try {
-        // Build prompt and generate SQL
-        std::string prompt = build_prompt(query, schema, search_results, similar_results);
-        auto response = model_->chat_completion(prompt);
-        std::string sql = extract_sql(response.response);
+        std::string sql = generate_statement(query, schema, search_results, similar_results);
         
         // Validate and optimize the generated SQL
         // TODO(YH) sql = validate_and_optimize_sql(sql);

@@ -1,5 +1,6 @@
 # pg_llm extension
 comment = 'PostgreSQL extension for LLM integration'
-default_version = '1.0'
+default_version = '1.1'
 module_pathname = '$libdir/pg_llm'
-relocatable = true 
+relocatable = true
+requires = 'vector'

@@ -5,6 +5,7 @@
 
 #include "catalog/pg_llm_models.h"
 #include "models/llm_interface.h"
+#include "utils/pg_llm_support.h"
 
 namespace pg_llm {
 
@@ -54,24 +55,42 @@ std::shared_ptr<LLMInterface> ModelManager::get_model(const std::string& instanc
     }
   }
 
-  // get from catalog table
-  std::string model_type, api_key, config;
-  bool local_model = false;
-  bool result = pg_llm_model_get_infos(&local_model, instance_name, model_type, api_key, config);
+  PgLlmModelInfo info;
+  bool result = pg_llm_model_get_info(instance_name, &info);
   if (unlikely(!result)) {
     return nullptr;
-  } else {
-    auto& manager = pg_llm::ModelManager::get_instance();
-    manager.register_model(model_type, [model_type]() {
-      return std::make_unique<pg_llm::LLMInterface>(model_type);
-    });
-    result = manager.create_model_instance(local_model, model_type, instance_name, api_key, config);
-    if (result) {
-      return get_model(instance_name);
-    } else {
-      return nullptr;
-    }
   }
+
+  std::string api_key = info.api_key;
+  std::string config = info.config;
+  try {
+    if (!info.encrypted_api_key.empty()) {
+      api_key = pg_llm_decrypt_text(info.encrypted_api_key);
+    }
+    if (!info.encrypted_config.empty()) {
+      config = pg_llm_decrypt_text(info.encrypted_config);
+    }
+  } catch (const std::exception& e) {
+    PG_LLM_LOG_ERROR("failed to decrypt model config for %s: %s",
+                     instance_name.c_str(),
+                     e.what());
+    return nullptr;
+  }
+
+  auto& manager = pg_llm::ModelManager::get_instance();
+  manager.register_model(info.model_type, [model_type = info.model_type]() {
+    return std::make_unique<pg_llm::LLMInterface>(model_type);
+  });
+  result = manager.create_model_instance(info.local_model,
+                                         info.model_type,
+                                         instance_name,
+                                         api_key,
+                                         config);
+  if (result) {
+    return get_model(instance_name);
+  }
+
+  return nullptr;
 }
 
 std::vector<ModelResponse> ModelManager::parallel_inference(

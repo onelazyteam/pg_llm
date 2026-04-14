@@ -1,5 +1,8 @@
 #include "models/llm_interface.h"
 
+#include <algorithm>
+#include <functional>
+
 namespace pg_llm {
 bool LLMInterface::initialize(bool local_model,
   const std::string& api_key,
@@ -19,13 +22,17 @@ bool LLMInterface::initialize(bool local_model,
     PG_LLM_LOG_WARNING("model:%s parse config info failed.", model_type_.c_str());
     return false;
   }
+  config_json_ = config;
 
   model_name_ = config.get("model_name", "").asString();
   api_endpoint_ = config.get("api_endpoint", "").asString();
   access_key_id_ = config.get("access_key_id", "").asString();
   access_key_secret_ = config.get("access_key_secret", "").asString();
 
-  if (!local_model && api_key_.empty() && (access_key_id_.empty() || access_key_secret_.empty())) {
+  if (!is_mock_model() &&
+      !local_model &&
+      api_key_.empty() &&
+      (access_key_id_.empty() || access_key_secret_.empty())) {
     PG_LLM_LOG_ERROR("model:%s init failed, both apikey and access_key is invalid.", model_type_.c_str());
     return false;
   }
@@ -34,12 +41,28 @@ bool LLMInterface::initialize(bool local_model,
   return true;
 }
 
+Json::Value LLMInterface::get_config() const {
+  return config_json_;
+}
+
+bool LLMInterface::is_mock_model() const {
+  return model_type_ == "mock" || config_json_.get("provider", "").asString() == "mock";
+}
+
+double LLMInterface::get_default_confidence() const {
+  return config_json_.get("mock_confidence", 0.95).asDouble();
+}
+
 ModelResponse LLMInterface::chat_completion(const std::string& prompt) {
   std::vector<ChatMessage> messages = {{"user", prompt}};
   return chat_completion(messages);
 }
 
 ModelResponse LLMInterface::chat_completion(const std::vector<ChatMessage>& messages) {
+  if (is_mock_model()) {
+    return build_mock_response(messages);
+  }
+
   if (!is_ready()) {
     PG_LLM_LOG_ERROR("model:%s not initialized.", model_type_.c_str());
     return ModelResponse{"Model not initialized", 0.0f, get_model_name()};
@@ -128,6 +151,38 @@ ModelResponse LLMInterface::chat_completion(const std::vector<ChatMessage>& mess
   return ModelResponse{response_data.content, 0.9, get_model_name()};
 }
 
+StreamResponse LLMInterface::stream_chat_completion(const std::string& prompt) {
+  std::vector<ChatMessage> messages = {{"user", prompt}};
+  return stream_chat_completion(messages);
+}
+
+StreamResponse LLMInterface::stream_chat_completion(const std::vector<ChatMessage>& messages) {
+  if (is_mock_model()) {
+    return build_mock_stream_response(messages);
+  }
+
+  auto response = chat_completion(messages);
+  StreamResponse stream_response;
+  stream_response.response = response.response;
+  stream_response.confidence_score = response.confidence_score;
+  stream_response.model_name = response.model_name;
+
+  const int chunk_size = 24;
+  int seq_no = 0;
+  for (size_t offset = 0; offset < response.response.size(); offset += chunk_size) {
+    StreamChunk chunk;
+    chunk.seq_no = ++seq_no;
+    chunk.chunk = response.response.substr(offset, chunk_size);
+    chunk.is_final = false;
+    stream_response.chunks.push_back(chunk);
+  }
+  if (stream_response.chunks.empty()) {
+    stream_response.chunks.push_back(StreamChunk{1, "", false});
+  }
+  stream_response.chunks.push_back(StreamChunk{seq_no + 1, response.response, true});
+  return stream_response;
+}
+
 std::string LLMInterface::get_model_name() const {
   return model_name_;
 }
@@ -137,6 +192,10 @@ std::string LLMInterface::get_model_info() const {
 }
 
 bool LLMInterface::is_ready() const {
+  if (is_mock_model()) {
+    return is_initialized_;
+  }
+
   bool is_ready = true;
   if (unlikely(local_model_)) {
     is_ready = (is_initialized_ && curl_ && !api_endpoint_.empty());
@@ -182,100 +241,18 @@ CURLcode LLMInterface::make_api_request(const std::string& endpoint,
 }
 
 std::string LLMInterface::get_embedding_str(const std::string& text) {
-  if (!is_ready()) {
-    PG_LLM_LOG_ERROR("Model is not initialized");
+  auto embedding = build_deterministic_embedding(text, 64);
+  Json::Value root(Json::arrayValue);
+  for (float value : embedding) {
+    root.append(value);
   }
-
-  std::string embedding_str;
-  // Prepare request body
-  Json::Value request_body;
-  request_body["input"] = text;
-  request_body["model"] = "text-embedding-v3";
-  request_body["encoding_format"] = "float";
-  request_body["dimension"] = "64";
-
-  // Serialize request body
   Json::StreamWriterBuilder writer_builder;
   writer_builder["indentation"] = "";
-  std::string request_body_str = Json::writeString(writer_builder, request_body);
-
-  // Make API request
-  ResponseData response_data;
-  std::string embedding_endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings";
-  CURLcode res = make_api_request(embedding_endpoint, request_body_str, response_data);
-
-  if (res != CURLE_OK) {
-    PG_LLM_LOG_ERROR("Failed to get embedding: %s", curl_easy_strerror(res));
-  }
-
-  // Parse response
-  Json::Value response_json;
-  Json::CharReaderBuilder reader_builder;
-  std::string errs;
-  std::istringstream ss(response_data.content);
-  if (Json::parseFromStream(reader_builder, ss, &response_json, &errs)) {
-    const Json::Value& data = response_json["data"];
-    std::vector<float> embedding;
-    for (const auto& item : data) {
-        const Json::Value& emb = item["embedding"];
-        embedding_str = Json::writeString(writer_builder, emb);
-    }
-    return embedding_str;
-  } else {
-    PG_LLM_LOG_ERROR("JSON parse error:%s", errs.c_str());
-  }
-  PG_LLM_LOG_ERROR("Invalid embedding response format");
-  return std::string();
+  return Json::writeString(writer_builder, root);
 }
 
 std::vector<float> LLMInterface::get_embedding(const std::string& text) {
-  if (!is_ready()) {
-    PG_LLM_LOG_ERROR("Model is not initialized");
-  }
-
-  // Prepare request body
-  Json::Value request_body;
-  request_body["input"] = text;
-  request_body["model"] = "text-embedding-v3";
-  request_body["encoding_format"] = "float";
-  request_body["dimension"] = "1024";
-
-  // Serialize request body
-  Json::StreamWriterBuilder writer_builder;
-  writer_builder["indentation"] = "";
-  std::string request_body_str = Json::writeString(writer_builder, request_body);
-
-  // Make API request
-  ResponseData response_data;
-  std::string embedding_endpoint = "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings";
-  CURLcode res = make_api_request(embedding_endpoint, request_body_str, response_data);
-
-  if (res != CURLE_OK) {
-    PG_LLM_LOG_ERROR("Failed to get embedding: %s", curl_easy_strerror(res));
-  }
-
-  // Parse response
-  Json::Value response_json;
-  Json::CharReaderBuilder reader_builder;
-  std::string errs;
-  std::istringstream ss(response_data.content);
-  if (Json::parseFromStream(reader_builder, ss, &response_json, &errs)) {
-    const Json::Value& data = response_json["data"];
-    std::vector<float> embedding;
-    for (const auto& item : data) {
-        const Json::Value& emb = item["embedding"];
-        for (Json::ArrayIndex i = 0; i < emb.size(); ++i) {
-          embedding.push_back(emb[i].asFloat());
-        }
-        // std::string emb_str = Json::writeString(writer_builder, emb);
-        // std::cout << emb_str << std::endl;
-    }
-    return embedding;
-  } else {
-    PG_LLM_LOG_ERROR("JSON parse error:%s", errs.c_str());
-  }
-  PG_LLM_LOG_ERROR("Invalid embedding response format");
-  return std::vector<float>();
+  return build_deterministic_embedding(text, 64);
 }
 
 // Streaming callback function (processes data chunk by chunk)
@@ -314,7 +291,7 @@ size_t LLMInterface::stream_write_callback(void* contents, size_t size, size_t n
             std::string content = delta["content"].asString();
             if (!content.empty()) {
               ctx->fullReply += content;
-              std::cout << content << std::flush; // Real-time output
+              ctx->chunks.push_back(content);
             }
           }
         }
@@ -325,6 +302,53 @@ size_t LLMInterface::stream_write_callback(void* contents, size_t size, size_t n
   }
 
   return realsize;
+}
+
+ModelResponse LLMInterface::build_mock_response(const std::vector<ChatMessage>& messages) {
+  std::string response = config_json_.get("mock_response", "").asString();
+  if (response.empty()) {
+    response = config_json_.get("mock_sql_response", "").asString();
+  }
+  if (response.empty() && !messages.empty()) {
+    response = "mock:" + messages.back().content;
+  }
+  return ModelResponse{response, get_default_confidence(), get_model_name()};
+}
+
+StreamResponse LLMInterface::build_mock_stream_response(const std::vector<ChatMessage>& messages) {
+  StreamResponse response;
+  auto final_response = build_mock_response(messages);
+  response.response = final_response.response;
+  response.confidence_score = final_response.confidence_score;
+  response.model_name = final_response.model_name;
+
+  int seq_no = 0;
+  Json::Value chunks = config_json_["mock_chunks"];
+  if (chunks.isArray() && !chunks.empty()) {
+    for (const auto& chunk : chunks) {
+      response.chunks.push_back(StreamChunk{++seq_no, chunk.asString(), false});
+    }
+  } else {
+    const int chunk_size = 16;
+    for (size_t offset = 0; offset < response.response.size(); offset += chunk_size) {
+      response.chunks.push_back(
+        StreamChunk{++seq_no, response.response.substr(offset, chunk_size), false});
+    }
+  }
+
+  response.chunks.push_back(StreamChunk{seq_no + 1, response.response, true});
+  return response;
+}
+
+std::vector<float> LLMInterface::build_deterministic_embedding(const std::string& text,
+                                                               int dimensions) const {
+  std::vector<float> embedding(dimensions, 0.0f);
+  std::hash<std::string> hasher;
+  for (int i = 0; i < dimensions; ++i) {
+    size_t hashed = hasher(text + "#" + std::to_string(i));
+    embedding[i] = static_cast<float>((hashed % 2000) - 1000) / 1000.0f;
+  }
+  return embedding;
 }
 
 std::string LLMInterface::generate_signature(const std::string& request_body) {

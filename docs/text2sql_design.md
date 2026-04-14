@@ -1,218 +1,122 @@
-# Text2SQL Design Document
+# Text2SQL Design (v1.1)
 
-## 1. Overview
+## 1. Goal
 
-Text2SQL is a PostgreSQL extension that converts natural language queries into SQL statements. It leverages Large Language Models (LLMs) and vector search technology to help users query databases using natural language.
+`pg_llm` Text2SQL turns natural language prompts into executable SQL inside PostgreSQL, with optional vector/RAG context and structured observability.
 
-## 2. Architecture
+Primary APIs:
 
-### 2.1 Core Components
+- `pg_llm_text2sql(...) returns text` (compatibility wrapper)
+- `pg_llm_text2sql_json(...) returns jsonb` (authoritative structured output)
 
-1. **Text2SQL Class**
-   - Core conversion engine
-   - Manages LLM model and configuration
-   - Handles schema information and vector search
+## 2. Pipeline
 
-2. **Data Structures**
-   - `TableInfo`: Table structure information
-   - `VectorSchemaInfo`: Vector search schema results
-   - `Text2SQLConfig`: Configuration parameters
-   - `CacheEntry`: Cache entry with timestamp
+Implementation entrypoint: `build_text2sql_json_internal(...)` in `src/pg_llm.cpp`.
 
-### 2.2 Workflow
+### Step 1: Context Assembly
 
-1. **Schema Information Retrieval**
-   - Fetches table structure from database
-   - Supports custom schema information
-   - Implements caching mechanism
+- Resolve model instance from `ModelManager`.
+- Parse runtime options into `Text2SQLConfig`.
+- Build schema context:
+  - caller-provided `schema_info`, or
+  - schema introspection from `Text2SQL::get_schema_info()`.
 
-2. **Vector Search**
-   - Uses pgvector for similarity search
-   - Configurable similarity threshold
-   - Supports parallel processing
-   - Implements batch processing
+### Step 2: Optional Vector Retrieval
 
-3. **SQL Generation**
-   - Builds optimized prompts
-   - Calls LLM for SQL generation
-   - Extracts and optimizes SQL statements
-   - Implements result caching
+When `use_vector_search = true`:
 
-## 3. Configuration
+- Retrieve relevant schema/vector hits through `Text2SQL::search_vectors(prompt)`.
+- Retrieve similar NL-SQL examples via `Text2SQL::get_similar_queries(prompt)`.
 
-### 3.1 Basic Settings
+Vector storage/search uses `_pg_llm_catalog.pg_llm_vectors` with corrected column naming:
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| use_vector_search | bool | true | Enable vector search |
-| max_tables | int | 5 | Maximum number of tables to return |
-| similarity_threshold | float | 0.7 | Similarity threshold for vector search |
-| max_tokens | int | 4000 | Maximum token limit |
-| include_sample_data | bool | true | Include sample data in prompts |
-| sample_data_limit | int | 3 | Sample data row limit |
+- `query_vector` (embedding column)
+- `table_name`, `column_name`, `row_id`, `metadata`
 
-### 3.2 Performance Settings
+### Step 3: SQL Generation
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| enable_cache | bool | true | Enable caching |
-| cache_ttl_seconds | int | 3600 | Cache time-to-live in seconds |
-| max_cache_size | int | 1000 | Maximum cache entries |
-| batch_size | int | 100 | Batch size for vector operations |
-| parallel_processing | bool | true | Enable parallel processing |
-| max_parallel_threads | int | 4 | Maximum parallel threads |
+- Call `Text2SQL::generate_statement(prompt, schema, vector_hits, similar_queries)`.
+- Output is normalized SQL text (`generated_sql`).
 
-## 4. Performance Optimization
+### Step 4: SQL Execution + Analysis
 
-### 4.1 Caching Mechanism
+- Execute generated SQL through SPI.
+- Return execution status, affected row count, and selected rows/columns.
+- Run `EXPLAIN <sql>` and return plan lines in `execution.explain`.
 
-1. **Multi-level Cache**
-   - Schema information cache
-   - Sample data cache
-   - Vector search results cache
-   - SQL generation cache
+### Step 5: Observability
 
-2. **Cache Management**
-   - Time-based expiration
-   - Size-based cleanup
-   - Thread-safe operations
+- Persist audit event (`event_type = text2sql`) in `pg_llm_audit_log`.
+- Persist trace payload in `pg_llm_trace_log`.
+- Use `request_id` for correlation.
 
-3. **Cache Configuration**
-   - Configurable TTL
-   - Adjustable cache size
-   - Enable/disable per cache type
+## 3. Input Contract
 
-### 4.2 Parallel Processing
+`pg_llm_text2sql_json(instance_name, prompt, schema_info, use_vector_search, options)`
 
-1. **Vector Search**
-   - Parallel embedding generation
-   - Batch processing of vectors
-   - Configurable thread count
+- `instance_name text`: registered model instance
+- `prompt text`: natural language query
+- `schema_info text default NULL`: optional schema JSON override
+- `use_vector_search bool default true`: toggle vector enhancement
+- `options jsonb`: runtime tuning
 
-2. **Performance Tuning**
-   - Adjustable batch size
-   - Dynamic thread management
-   - Resource monitoring
+Current option keys parsed by implementation:
 
-### 4.3 Memory Management
+- `enable_cache`
+- `cache_ttl_seconds`
+- `parallel_processing`
+- `max_parallel_threads`
+- `similarity_threshold`
+- `sample_data_limit`
 
-1. **Resource Optimization**
-   - Efficient memory usage
-   - Timely cache cleanup
-   - Memory leak prevention
+## 4. Output Contract (`jsonb`)
 
-2. **Query Optimization**
-   - Reduced database queries
-   - Batch processing
-   - Query result caching
+Typical shape:
 
-## 5. Usage Examples
-
-### 5.1 Basic Usage
-
-```sql
--- Basic text2sql query
-SELECT pg_llm_text2sql('model_name', 'query all user information');
-
--- With custom schema
-SELECT pg_llm_text2sql('model_name', 'query all user information', '{"tables":[...]}');
-
--- Disable vector search
-SELECT pg_llm_text2sql('model_name', 'query all user information', NULL, false);
+```json
+{
+  "request_id": "uuid",
+  "instance_name": "model-instance",
+  "prompt": "show latest 10 orders",
+  "generated_sql": "SELECT ...",
+  "execution": {
+    "status": "SPI_OK_SELECT",
+    "row_count": 10,
+    "columns": ["id", "created_at"],
+    "rows": [{"id": "1", "created_at": "..."}],
+    "explain": ["Seq Scan on ..."]
+  },
+  "similar_queries": ["..."],
+  "vector_hits": [
+    {
+      "table_name": "orders",
+      "column_name": "note",
+      "row_id": 123,
+      "similarity": 0.91,
+      "metadata": {"source": "..."}
+    }
+  ]
+}
 ```
 
-### 5.2 Performance Tuning
+`pg_llm_text2sql(...)` returns only `generated_sql` for compatibility.
 
-```sql
--- Configure performance settings
-SELECT pg_llm_text2sql('model_name', 'query all user information', NULL, true,
-  '{"enable_cache": true, "cache_ttl_seconds": 7200, "parallel_processing": true}');
-```
+## 5. Failure Semantics
 
-## 6. Monitoring and Tuning
+Errors are raised as PostgreSQL errors (`ereport(ERROR)`) for:
 
-### 6.1 Performance Metrics
+- missing/invalid model instance
+- SQL execution failures
+- SPI errors
+- malformed JSON input (`schema_info`/`options`)
 
-1. **Cache Metrics**
-   - Cache hit rate
-   - Cache size
-   - Cache eviction rate
+## 6. Security Considerations
 
-2. **Processing Metrics**
-   - Query latency
-   - Vector search time
-   - SQL generation time
+- Generated SQL is executed in the caller's PostgreSQL security context.
+- Production usage should combine role permissions and schema-level controls.
+- Trace/audit payloads follow `pg_llm.redact_sensitive` behavior.
 
-3. **Resource Usage**
-   - Memory consumption
-   - CPU utilization
-   - Database load
+## 7. Build And Deployment Notes
 
-### 6.2 Tuning Guidelines
-
-1. **Cache Configuration**
-   - Monitor cache hit rates
-   - Adjust cache size based on usage
-   - Set appropriate TTL values
-
-2. **Parallel Processing**
-   - Monitor CPU utilization
-   - Adjust thread count
-   - Optimize batch size
-
-3. **Resource Management**
-   - Monitor memory usage
-   - Optimize query patterns
-   - Balance load distribution
-
-## 7. Security Considerations
-
-1. **SQL Injection Prevention**
-   - Strict SQL extraction
-   - Parameter validation
-   - Query sanitization
-
-2. **Access Control**
-   - PostgreSQL permissions
-   - Data access restrictions
-   - API key management
-
-3. **Data Protection**
-   - Sensitive data handling
-   - Cache security
-   - Audit logging
-
-## 8. Future Improvements
-
-1. **Feature Enhancements**
-   - Support for more SQL dialects
-   - Query optimization suggestions
-   - Advanced caching strategies
-
-2. **Performance Optimization**
-   - Improved vector search
-   - Enhanced parallel processing
-   - Better resource management
-
-3. **User Experience**
-   - More configuration options
-   - Detailed error reporting
-   - Performance monitoring tools
-
-## 9. Dependencies
-
-1. **Required Extensions**
-   - pgvector
-   - LLM interface
-   - PostgreSQL 12+
-
-2. **System Requirements**
-   - Adequate memory
-   - Multi-core CPU
-   - Sufficient disk space
-
-## 10. References
-
-1. PostgreSQL Documentation
-2. pgvector Documentation
-3. LLM Model Documentation 
+- Compiled and installed via CMake (`contrib/pg_llm/CMakeLists.txt`).
+- Extension SQL definitions are versioned in `sql/pg_llm--1.1.sql` and upgrade script `sql/pg_llm--1.0--1.1.sql`.

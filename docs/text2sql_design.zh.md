@@ -1,218 +1,123 @@
-# Text2SQL 设计文档
+# Text2SQL 设计文档（v1.1）
 
-## 1. 概述
+## 1. 目标
 
-Text2SQL 是一个 PostgreSQL 扩展，用于将自然语言查询转换为 SQL 语句。它利用大语言模型(LLM)和向量检索技术，帮助用户通过自然语言查询数据库。
+`pg_llm` 的 Text2SQL 能力将自然语言问题转换为 SQL，并在 PostgreSQL 内执行，支持可选向量增强与结构化可观测输出。
 
-## 2. 架构设计
+主要接口：
 
-### 2.1 核心组件
+- `pg_llm_text2sql(...) returns text`（兼容旧接口）
+- `pg_llm_text2sql_json(...) returns jsonb`（结构化主接口）
 
-1. **Text2SQL 类**
-   - 核心转换引擎
-   - 管理 LLM 模型和配置
-   - 处理 schema 信息和向量检索
+## 2. 执行流水线
 
-2. **数据结构**
-   - `TableInfo`: 表结构信息
-   - `VectorSchemaInfo`: 向量检索元数据结果
-   - `Text2SQLConfig`: 配置参数
-   - `CacheEntry`: 带时间戳的缓存条目
+核心实现入口：`src/pg_llm.cpp` 中的 `build_text2sql_json_internal(...)`。
 
-### 2.2 工作流程
+### 步骤 1：上下文组装
 
-1. **Schema 信息获取**
-   - 从数据库获取表结构
-   - 支持自定义 schema 信息
-   - 实现缓存机制
+- 从 `ModelManager` 获取模型实例。
+- 解析 `options` 到 `Text2SQLConfig`。
+- 组装 schema：
+  - 使用调用方传入的 `schema_info`，或
+  - 调用 `Text2SQL::get_schema_info()` 自动获取。
 
-2. **向量检索**
-   - 使用 pgvector 进行相似度搜索
-   - 可配置相似度阈值
-   - 支持并行处理
-   - 实现批处理
+### 步骤 2：可选向量召回
 
-3. **SQL 生成**
-   - 构建优化提示词
-   - 调用 LLM 生成 SQL
-   - 提取和优化 SQL 语句
-   - 实现结果缓存
+当 `use_vector_search = true` 时：
 
-## 3. 配置参数
+- 调用 `Text2SQL::search_vectors(prompt)` 召回相关向量命中。
+- 调用 `Text2SQL::get_similar_queries(prompt)` 召回相似 NL-SQL 样例。
 
-### 3.1 基本设置
+向量相关表为 `_pg_llm_catalog.pg_llm_vectors`，字段已统一：
 
-| 参数 | 类型 | 默认值 | 描述 |
-|------|------|--------|------|
-| use_vector_search | bool | true | 是否启用向量检索 |
-| max_tables | int | 5 | 最大返回表数量 |
-| similarity_threshold | float | 0.7 | 相似度阈值 |
-| max_tokens | int | 4000 | 最大 token 限制 |
-| include_sample_data | bool | true | 是否包含样本数据 |
-| sample_data_limit | int | 3 | 样本数据行数限制 |
+- `query_vector`（向量列）
+- `table_name`、`column_name`、`row_id`、`metadata`
 
-### 3.2 性能设置
+### 步骤 3：SQL 生成
 
-| 参数 | 类型 | 默认值 | 描述 |
-|------|------|--------|------|
-| enable_cache | bool | true | 是否启用缓存 |
-| cache_ttl_seconds | int | 3600 | 缓存过期时间(秒) |
-| max_cache_size | int | 1000 | 最大缓存条目数 |
-| batch_size | int | 100 | 向量操作批处理大小 |
-| parallel_processing | bool | true | 是否启用并行处理 |
-| max_parallel_threads | int | 4 | 最大并行线程数 |
+- 调用 `Text2SQL::generate_statement(prompt, schema, vector_hits, similar_queries)`。
+- 得到规范化 SQL（`generated_sql`）。
 
-## 4. 性能优化
+### 步骤 4：SQL 执行与分析
 
-### 4.1 缓存机制
+- 通过 SPI 执行生成 SQL。
+- 返回状态、影响行数、结果行列数据。
+- 额外执行 `EXPLAIN <sql>`，并返回计划文本（`execution.explain`）。
 
-1. **多级缓存**
-   - Schema 信息缓存
-   - 样本数据缓存
-   - 向量检索结果缓存
-   - SQL 生成缓存
+### 步骤 5：可观测落库
 
-2. **缓存管理**
-   - 基于时间的过期
-   - 基于大小的清理
-   - 线程安全操作
+- 在 `pg_llm_audit_log` 写入审计记录（`event_type = text2sql`）。
+- 在 `pg_llm_trace_log` 写入完整追踪信息。
+- 使用 `request_id` 关联全链路。
 
-3. **缓存配置**
-   - 可配置的过期时间
-   - 可调整的缓存大小
-   - 按类型启用/禁用
+## 3. 输入契约
 
-### 4.2 并行处理
+`pg_llm_text2sql_json(instance_name, prompt, schema_info, use_vector_search, options)`
 
-1. **向量检索**
-   - 并行嵌入生成
-   - 向量批处理
-   - 可配置线程数
+- `instance_name text`：已注册模型实例名
+- `prompt text`：自然语言问题
+- `schema_info text default NULL`：可选 schema JSON 覆盖
+- `use_vector_search bool default true`：是否开启向量增强
+- `options jsonb`：运行时参数
 
-2. **性能调优**
-   - 可调整批处理大小
-   - 动态线程管理
-   - 资源监控
+当前实现识别的 `options` 键：
 
-### 4.3 内存管理
+- `enable_cache`
+- `cache_ttl_seconds`
+- `parallel_processing`
+- `max_parallel_threads`
+- `similarity_threshold`
+- `sample_data_limit`
 
-1. **资源优化**
-   - 高效内存使用
-   - 及时缓存清理
-   - 内存泄漏预防
+## 4. 输出契约（`jsonb`）
 
-2. **查询优化**
-   - 减少数据库查询
-   - 批处理
-   - 查询结果缓存
+典型结构：
 
-## 5. 使用示例
-
-### 5.1 基本用法
-
-```sql
--- 基本 text2sql 查询
-SELECT pg_llm_text2sql('model_name', '查询所有用户信息');
-
--- 使用自定义 schema
-SELECT pg_llm_text2sql('model_name', '查询所有用户信息', '{"tables":[...]}');
-
--- 禁用向量检索
-SELECT pg_llm_text2sql('model_name', '查询所有用户信息', NULL, false);
+```json
+{
+  "request_id": "uuid",
+  "instance_name": "model-instance",
+  "prompt": "show latest 10 orders",
+  "generated_sql": "SELECT ...",
+  "execution": {
+    "status": "SPI_OK_SELECT",
+    "row_count": 10,
+    "columns": ["id", "created_at"],
+    "rows": [{"id": "1", "created_at": "..."}],
+    "explain": ["Seq Scan on ..."]
+  },
+  "similar_queries": ["..."],
+  "vector_hits": [
+    {
+      "table_name": "orders",
+      "column_name": "note",
+      "row_id": 123,
+      "similarity": 0.91,
+      "metadata": {"source": "..."}
+    }
+  ]
+}
 ```
 
-### 5.2 性能调优
+`pg_llm_text2sql(...)` 仅返回 `generated_sql`，用于兼容历史调用。
 
-```sql
--- 配置性能设置
-SELECT pg_llm_text2sql('model_name', '查询所有用户信息', NULL, true,
-  '{"enable_cache": true, "cache_ttl_seconds": 7200, "parallel_processing": true}');
-```
+## 5. 错误语义
 
-## 6. 监控和调优
+以下场景会抛 PostgreSQL 错误（`ereport(ERROR)`）：
 
-### 6.1 性能指标
+- 模型实例不存在或不可用
+- SQL 执行失败
+- SPI 调用失败
+- `schema_info`/`options` JSON 非法
 
-1. **缓存指标**
-   - 缓存命中率
-   - 缓存大小
-   - 缓存淘汰率
+## 6. 安全说明
 
-2. **处理指标**
-   - 查询延迟
-   - 向量检索时间
-   - SQL 生成时间
+- 生成 SQL 以调用者当前数据库权限执行。
+- 生产环境应配合角色权限与 schema 权限边界控制。
+- 审计与追踪内容遵循 `pg_llm.redact_sensitive` 脱敏策略。
 
-3. **资源使用**
-   - 内存消耗
-   - CPU 使用率
-   - 数据库负载
+## 7. 构建与发布
 
-### 6.2 调优指南
-
-1. **缓存配置**
-   - 监控缓存命中率
-   - 根据使用情况调整缓存大小
-   - 设置合适的过期时间
-
-2. **并行处理**
-   - 监控 CPU 使用率
-   - 调整线程数
-   - 优化批处理大小
-
-3. **资源管理**
-   - 监控内存使用
-   - 优化查询模式
-   - 平衡负载分布
-
-## 7. 安全考虑
-
-1. **SQL 注入防护**
-   - 严格的 SQL 提取
-   - 参数验证
-   - 查询净化
-
-2. **访问控制**
-   - PostgreSQL 权限
-   - 数据访问限制
-   - API 密钥管理
-
-3. **数据保护**
-   - 敏感数据处理
-   - 缓存安全
-   - 审计日志
-
-## 8. 未来改进
-
-1. **功能增强**
-   - 支持更多 SQL 方言
-   - 查询优化建议
-   - 高级缓存策略
-
-2. **性能优化**
-   - 改进向量检索
-   - 增强并行处理
-   - 更好的资源管理
-
-3. **用户体验**
-   - 更多配置选项
-   - 详细的错误报告
-   - 性能监控工具
-
-## 9. 依赖关系
-
-1. **必需扩展**
-   - pgvector
-   - LLM 接口
-   - PostgreSQL 12+
-
-2. **系统要求**
-   - 足够的内存
-   - 多核 CPU
-   - 足够的磁盘空间
-
-## 10. 参考资料
-
-1. PostgreSQL 文档
-2. pgvector 文档
-3. LLM 模型文档 
+- 项目通过 CMake 编译安装（`contrib/pg_llm/CMakeLists.txt`）。
+- SQL 版本脚本：`sql/pg_llm--1.1.sql`。
+- 升级脚本：`sql/pg_llm--1.0--1.1.sql`。

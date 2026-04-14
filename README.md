@@ -9,18 +9,18 @@ This PostgreSQL extension enables direct integration with various Large Language
 - [x] Dynamic model management (add/remove models at runtime)
 - [x] Large model metadata persistence
 - [x] Importing the log library
-- [ ] Support for streaming responses
+- [x] Support for streaming responses
 - [x] Session-based multi-turn conversation support
 - [x] Parallel inference with multiple models
-- [ ] Automatically select the model with the highest confidence (select by score), and use the local model as a backup (fall back to the local model when confidence is low)
-- [ ] Sensitive information encryption
-- [ ] Audit logging
-- [ ] Session state management
-- [ ] Execute SQL through plug-in functions and let the LLM give optimization suggestions
+- [x] Automatically select the model with the highest confidence (select by score), and use the local model as a backup (fall back to the local model when confidence is low)
+- [x] Sensitive information encryption
+- [x] Audit logging
+- [x] Session state management
+- [x] Execute SQL through plug-in functions and let the LLM give optimization suggestions
 - [x] Support natural language query, can enter human language through plug-ins to query database data
-- [ ] Generate reports, generate data analysis charts, intelligent analysis: built-in data statistical analysis and visualization suggestion generation
-- [ ] Full observability, complete record of decision-making process and intermediate results
-- [ ] Improve model accuracy, RAG knowledge base, feedback learning
+- [x] Generate reports, generate data analysis charts, intelligent analysis: built-in data statistical analysis and visualization suggestion generation
+- [x] Full observability, complete record of decision-making process and intermediate results
+- [x] Improve model accuracy, RAG knowledge base, feedback learning
 
 ## Prerequisites
 
@@ -199,6 +199,89 @@ SELECT pg_llm_parallel_chat(
     'What are the advantages of PostgreSQL?',
     ARRAY['gpt4', 'deepseek-chat', 'hunyuan-chat', 'qianwen-chat']
 );
+```
+
+### Streaming Chat
+
+```sql
+SELECT *
+FROM pg_llm_chat_stream(
+  'qianwen-chat',
+  'Explain MVCC in PostgreSQL',
+  '{}'::jsonb
+);
+```
+
+### Structured JSON APIs
+
+```sql
+SELECT pg_llm_chat_json('qianwen-chat', 'Summarize PostgreSQL in one paragraph');
+
+SELECT pg_llm_parallel_chat_json(
+  'Which PostgreSQL features matter most for analytics workloads?',
+  ARRAY['deepseek-r1-local', 'qianwen-chat'],
+  '{"confidence_threshold": 0.65}'::jsonb
+);
+
+SELECT pg_llm_text2sql_json(
+  'qianwen-chat',
+  'Show the latest 10 orders',
+  NULL,
+  true,
+  '{"enable_rag": true}'::jsonb
+);
+```
+
+### Session State
+
+```sql
+SELECT pg_llm_create_session(8);
+SELECT pg_llm_update_session_state('session-id', '{"topic":"finance"}'::jsonb);
+SELECT pg_llm_get_session('session-id');
+SELECT * FROM pg_llm_get_session_messages('session-id');
+```
+
+### SQL Analysis And Reporting
+
+```sql
+SELECT pg_llm_execute_sql_with_analysis(
+  'qianwen-chat',
+  'SELECT region, SUM(revenue) AS total_revenue FROM sales GROUP BY region',
+  '{}'::jsonb
+);
+
+SELECT pg_llm_generate_report(
+  'qianwen-chat',
+  'SELECT region, SUM(revenue) AS total_revenue FROM sales GROUP BY region',
+  '{}'::jsonb
+);
+```
+
+### Knowledge Base And Feedback
+
+```sql
+SELECT pg_llm_add_knowledge(
+  'ops-runbook',
+  'PostgreSQL VACUUM reclaims dead tuples and updates visibility information.',
+  '{"domain":"operations"}'::jsonb,
+  '{"chunk_size": 128}'::jsonb
+);
+
+SELECT * FROM pg_llm_search_knowledge('How does VACUUM help?', '{"limit": 3}'::jsonb);
+
+SELECT pg_llm_record_feedback(
+  '00000000-0000-0000-0000-000000000000'::uuid,
+  5,
+  'Helpful answer',
+  '{"tag":"positive"}'::jsonb
+);
+```
+
+### Audit And Trace
+
+```sql
+SELECT * FROM pg_llm_get_audit_log('{"limit": 20}'::jsonb);
+SELECT pg_llm_get_trace('00000000-0000-0000-0000-000000000000'::uuid);
 ```
 
 ### Removing Models

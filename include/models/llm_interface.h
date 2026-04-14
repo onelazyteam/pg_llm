@@ -38,6 +38,19 @@ struct ModelResponse {
   std::string model_name;
 };
 
+struct StreamChunk {
+  int seq_no;
+  std::string chunk;
+  bool is_final;
+};
+
+struct StreamResponse {
+  std::vector<StreamChunk> chunks;
+  std::string response;
+  double confidence_score;
+  std::string model_name;
+};
+
 // Response data accumulation structure
 struct ResponseData {
   std::string content;    // Accumulated response content
@@ -48,6 +61,7 @@ struct ResponseData {
 struct StreamContext {
   std::string buffer;      // Unprocessed data buffer
   std::string fullReply;   // Final concatenated response
+  std::vector<std::string> chunks;
 };
 
 // Abstract base class for LLM models
@@ -81,11 +95,19 @@ public:
   // Multi-turn chat completion
   ModelResponse chat_completion(const std::vector<ChatMessage>& messages);
 
+  // Streaming chat completion
+  StreamResponse stream_chat_completion(const std::string& prompt);
+  StreamResponse stream_chat_completion(const std::vector<ChatMessage>& messages);
+
   // Get model name
   std::string get_model_name() const;
 
   // Get model capabilities and parameters
   std::string get_model_info() const;
+
+  Json::Value get_config() const;
+  bool is_mock_model() const;
+  double get_default_confidence() const;
 
   // Validate if the model is ready for inference
   bool is_ready() const;
@@ -114,6 +136,10 @@ protected:
   std::string generate_signature(const std::string& request_body);
 
 private:
+  ModelResponse build_mock_response(const std::vector<ChatMessage>& messages);
+  StreamResponse build_mock_stream_response(const std::vector<ChatMessage>& messages);
+  std::vector<float> build_deterministic_embedding(const std::string& text, int dimensions) const;
+
   CURL* curl_;
   std::string model_type_;
   std::string api_key_;
@@ -121,6 +147,7 @@ private:
   std::string access_key_secret_;
   std::string model_name_;
   std::string api_endpoint_;
+  Json::Value config_json_;
   bool local_model_;
   bool is_initialized_;
   bool is_streaming_;

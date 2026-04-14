@@ -1,185 +1,68 @@
-# Google Logging (glog) Integration
+# Logging Compatibility Notes
 
-This document provides detailed instructions on how to correctly integrate and use Google's logging library (glog) in the pg_llm project.
+## 1. Current Behavior
 
-## Introduction
+`pg_llm` now logs through PostgreSQL native logging (`ereport`) while keeping the historical `pg_llm_glog_*` symbols and GUC names for backward compatibility.
 
-Google Logging Library (glog) provides a high-performance, thread-safe and feature-rich logging system, which is very suitable for large C++ projects. We have integrated glog into pg_llm to achieve better logging and debugging capabilities.
+This means:
 
-## Header Files
+- No runtime dependency on external glog is required for normal builds.
+- Existing code using `PG_LLM_LOG_INFO/WARNING/ERROR/FATAL` continues to work.
+- Existing `pg_llm.glog_*` settings remain accepted as compatibility knobs.
 
-To avoid conflicts with PostgreSQL macros, you must follow a specific order and macro definitions when including glog headers:
+## 2. Why This Exists
 
-```cpp
-// Always use our wrapper header
-#include "utils/pg_llm_glog.h"  // Located in include/utils/pg_llm_glog.h
+Earlier revisions used direct glog integration. The current compatibility layer avoids symbol/macro conflicts with PostgreSQL while preserving extension API stability.
 
-// Do not include glog/logging.h directly
-// Wrong: #include <glog/logging.h>
-```
+## 3. Recommended Include Pattern
 
-## Logging Macros
-
-We provide the following logging macros that support format strings:
+Always use:
 
 ```cpp
-// Basic usage
-PG_LLM_LOG_INFO("Simple message");
-
-// With format strings
-PG_LLM_LOG_INFO("Value: %d, String: %s", count, text.c_str());
-PG_LLM_LOG_WARNING("Warning: %s (code: %d)", error_msg, error_code);
-PG_LLM_LOG_ERROR("Error occurred: %s", error.what());
-PG_LLM_LOG_FATAL("Fatal error in %s: %s", function_name, error_msg);
-
-// Verbose logging (level can be configured via pg_llm.glog_v GUC variable)
-PG_LLM_VLOG(1) << "Detailed debug info";
+#include "utils/pg_llm_glog.h"
 ```
 
-## Configuration
+Do not include `glog/logging.h` directly in extension sources.
 
-The glog library is automatically initialized when the module is loaded, and can be configured through the following GUC variables:
+## 4. Supported Macros
 
-| Parameter | Description | Default | Range |
-|-----------|-------------|---------|--------|
-| `pg_llm.glog_log_dir` | Log file directory | PostgreSQL data directory | Any valid path |
-| `pg_llm.glog_min_log_level` | Minimum log level | INFO | INFO, WARNING, ERROR, FATAL |
-| `pg_llm.glog_log_to_stderr` | Output to stderr | true | true/false |
-| `pg_llm.glog_log_to_system_logger` | Use system logger | false | true/false |
-| `pg_llm.glog_max_log_size` | Maximum log file size (MB) | 50 | 1-1000 |
-| `pg_llm.glog_v` | Verbose log level | 0 | 0-9 |
+- `PG_LLM_LOG_INFO(...)`
+- `PG_LLM_LOG_WARNING(...)`
+- `PG_LLM_LOG_ERROR(...)`
+- `PG_LLM_LOG_FATAL(...)`
 
-Example configuration:
+All macros are routed to PostgreSQL log levels.
 
-```sql
--- Set glog configuration
-ALTER SYSTEM SET pg_llm.glog_log_dir = '/path/to/logs';
-ALTER SYSTEM SET pg_llm.glog_min_log_level = 'WARNING';
-ALTER SYSTEM SET pg_llm.glog_max_log_size = 100;
+## 5. Compatibility GUCs
 
--- Reload configuration
-SELECT pg_reload_conf();
-```
+The following GUCs are retained for compatibility:
 
-## Log File Format
+- `pg_llm.glog_log_dir`
+- `pg_llm.glog_min_log_level`
+- `pg_llm.glog_log_to_stderr`
+- `pg_llm.glog_log_to_system_logger`
+- `pg_llm.glog_max_log_size`
+- `pg_llm.glog_v`
 
-glog creates log files with names in the following format:
+They are safe to keep in existing configs. New deployments should primarily rely on PostgreSQL logging configuration.
 
-```
-pg_llm.[hostname].[user name].log.[severity level].[date].[time].[pid]
-```
+## 6. CMake Build Impact
 
-Example:
-```
-pg_llm.example.postgres.log.INFO.20240301-123456.12345
-```
+Primary build path is CMake (`contrib/pg_llm/CMakeLists.txt`).
 
-## CMake Configuration
+The extension requires:
 
-In CMake, ensure glog is configured correctly:
+- PostgreSQL server headers / `pg_config`
+- OpenSSL
+- libcurl
+- JsonCpp
 
-```cmake
-# Find glog dependency
-find_package(glog REQUIRED)
+No dedicated glog build step is required by default.
 
-# Add necessary macro definitions
-add_compile_definitions(
-    GLOG_NO_ABBREVIATED_SEVERITIES
-    GOOGLE_GLOG_DLL_DECL
-)
+## 7. Migration Guidance
 
-# Link glog library
-target_link_libraries(your_target 
-    glog::glog
-    # Other libraries...
-)
-```
+If your old deployment had glog-specific operational assumptions:
 
-## Common Issues and Solutions
-
-1. **"LOG" macro redefinition error**
-   - Cause: Both PostgreSQL and glog define the LOG macro
-   - Solution: Always use our wrapper header `pg_llm_glog.h`
-
-2. **Format string errors**
-   - Cause: Incorrect number or type of arguments
-   - Solution: Ensure format specifiers match the provided arguments
-   ```cpp
-   // Correct:
-   PG_LLM_LOG_INFO("Count: %d", count);
-   // Wrong:
-   PG_LLM_LOG_INFO("Count: %d"); // Missing argument
-   ```
-
-3. **Undefined symbols or linking errors**
-   - Cause: Not correctly linking the glog library
-   - Solution: Check CMakeLists.txt for proper library linking
-
-4. **Logs not appearing**
-   - Cause: Incorrect log directory permissions or configuration
-   - Solution: 
-     - Check GUC variable settings
-     - Verify directory permissions
-     - Check `pg_llm.glog_log_to_stderr` setting
-
-## Best Practices
-
-1. **Log Level Selection**
-   - Use INFO for general operational information
-   - Use WARNING for potential issues that don't affect operation
-   - Use ERROR for issues that affect operation but don't require shutdown
-   - Use FATAL for critical errors requiring immediate shutdown
-
-2. **Format String Usage**
-   ```cpp
-   // Good:
-   PG_LLM_LOG_INFO("Processing user %s: %d records", username, count);
-   
-   // Better (with context):
-   PG_LLM_LOG_INFO("Function %s: Processing user %s: %d records", 
-                   __func__, username, count);
-   ```
-
-3. **Performance Considerations**
-   - Use VLOG for detailed debug information
-   - Avoid expensive operations in log statements
-   - Consider log file rotation settings
-
-## Security Considerations
-
-1. **Sensitive Data**
-   - Never log sensitive information (passwords, API keys, etc.)
-   - Be cautious with user input in log messages
-   - Consider data privacy regulations
-
-2. **File Permissions**
-   - Log directory is created with 0700 permissions
-   - Ensure proper ownership of log files
-   - Monitor log file access
-
-## Troubleshooting
-
-1. **Viewing Logs**
-   ```bash
-   # View all logs
-   tail -f /path/to/logs/pg_llm.*.log
-   
-   # View only error logs
-   tail -f /path/to/logs/pg_llm.*.ERROR.*
-   ```
-
-2. **Common Debug Steps**
-   - Check log directory exists and has correct permissions
-   - Verify GUC settings are applied
-   - Enable stderr logging for immediate feedback
-   - Check PostgreSQL's error log for initialization issues
-
-## Contributing
-
-When adding new logging functionality:
-
-1. Use the provided macros and headers
-2. Follow the format string guidelines
-3. Document any new logging patterns
-4. Add appropriate error handling
-5. Test with different log levels and configurations 
+1. Keep existing `pg_llm.glog_*` settings temporarily.
+2. Move log routing/retention strategy to PostgreSQL logging policies.
+3. Validate severity mapping in PostgreSQL logs after upgrade.
